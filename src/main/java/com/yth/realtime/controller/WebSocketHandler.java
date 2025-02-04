@@ -1,4 +1,5 @@
 package com.yth.realtime.controller;
+import java.io.IOException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -39,9 +40,16 @@ public class WebSocketHandler extends TextWebSocketHandler {
                     String jsonData = String.format("{\"temperature\": %d, \"humidity\": %d}", 
                         data[0], data[1]);
                     session.sendMessage(new TextMessage(jsonData));
+                    log.info("웹소켓으로 데이터 전송: {}", jsonData);
                 }
             } catch (Exception e) {
-                log.error("데이터 전송 실패: {}", e.getMessage());
+                log.error("데이터 전송 실패: {}", e.getMessage(), e);
+                try {
+                    // 에러 메시지를 클라이언트에게 전송
+                    session.sendMessage(new TextMessage("{\"error\": \"" + e.getMessage() + "\"}"));
+                } catch (IOException ex) {
+                    log.error("에러 메시지 전송 실패", ex);
+                }
             }
         }, 0, 1, TimeUnit.SECONDS);
     }

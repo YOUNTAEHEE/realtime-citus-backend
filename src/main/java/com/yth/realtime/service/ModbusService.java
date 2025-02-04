@@ -1,84 +1,95 @@
 package com.yth.realtime.service;
 
-import java.net.InetAddress;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import net.wimpi.modbus.ModbusException;
-import net.wimpi.modbus.io.ModbusTCPTransaction;
-import net.wimpi.modbus.msg.ReadInputRegistersRequest;
-import net.wimpi.modbus.msg.ReadInputRegistersResponse;
-import net.wimpi.modbus.net.TCPMasterConnection;
+import com.ghgande.j2mod.modbus.ModbusException;
+import com.ghgande.j2mod.modbus.facade.ModbusTCPMaster;
+import com.ghgande.j2mod.modbus.procimg.Register;
+
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 
 @Service
 public class ModbusService {
-    private TCPMasterConnection connection;
-    private static final String IP_ADDRESS = "10.11.17.103";
-    private static final int PORT = 502;
     private static final Logger log = LoggerFactory.getLogger(ModbusService.class);
+    private ModbusTCPMaster modbusMaster;
+
+    @Value("${modbus.host:10.11.17.103}")
+    private String host;
     
-    // Modbus 레지스터 설정
-    private static final int REGISTER_START_ADDRESS = 10;  // 시작 주소를 0으로 변경
-    private static final int REGISTER_COUNT = 2;         // 읽을 레지스터 개수
+    @Value("${modbus.port:502}")
+    private int port;
+    
+    @Value("${modbus.timeout:3000}")
+    private int timeout;
 
-    public ModbusService() {
-        initConnection();
-    }
+    @Value("${modbus.slave-id:1}")
+    private int slaveId;
 
-    private void initConnection() {
+    @PostConstruct
+    public void init() {
         try {
-            if (connection != null && connection.isConnected()) {
-                connection.close();
-            }
-            InetAddress address = InetAddress.getByName(IP_ADDRESS);
-            connection = new TCPMasterConnection(address);
-            connection.setPort(PORT);
-            connection.connect();
-            log.info("Modbus 연결 성공: {}:{}", IP_ADDRESS, PORT);
+            modbusMaster = new ModbusTCPMaster(host, port);
+            modbusMaster.setTimeout(timeout);
+            modbusMaster.connect();
+            log.info("Modbus TCP 연결 성공 - host: {}, port: {}", host, port);
         } catch (Exception e) {
-            log.error("Modbus 연결 실패: {}", e.getMessage());
+            log.error("Modbus TCP 연결 실패: {}", e.getMessage());
         }
     }
 
     public int[] readModbusData() {
-        if (connection == null || !connection.isConnected()) {
-            log.info("Modbus 재연결 시도");
-            initConnection();
+        if (!modbusMaster.isConnected()) {
+            log.error("Modbus 연결이 되어있지 않습니다.");
+            return new int[]{0, 0};
         }
-        
+
         try {
-            // 레지스터 읽기 요청 생성
-            ReadInputRegistersRequest request = 
-                new ReadInputRegistersRequest(REGISTER_START_ADDRESS, REGISTER_COUNT);
+            int startAddress = 10;
+            int length = 2;
+            // 슬레이브 ID를 1로 지정하고 읽기
+            Register[] registers = modbusMaster.readMultipleRegisters(slaveId, startAddress, length);
             
-            // 트랜잭션 설정 및 실행
-            ModbusTCPTransaction transaction = new ModbusTCPTransaction(connection);
-            transaction.setRequest(request);
-            
-            // 요청 실행 전 로그
-            log.debug("Modbus 데이터 요청 - 시작주소: {}, 개수: {}", 
-                REGISTER_START_ADDRESS, REGISTER_COUNT);
-            
-            transaction.execute();
-            
-            // 응답 처리
-            ReadInputRegistersResponse response = 
-                (ReadInputRegistersResponse) transaction.getResponse();
-            
-            int temp = response.getRegister(0).getValue();
-            int humidity = response.getRegister(1).getValue();
-            
-            log.info("Modbus 데이터 읽기 성공 - 온도: {}, 습도: {}", temp, humidity);
-            return new int[] {temp, humidity};
-            
+            if (registers == null) {
+                log.error("레지스터 읽기 실패: null 반환");
+                return new int[]{0, 0};
+            }
+
+            int[] data = new int[length];
+            for (int i = 0; i < length; i++) {
+                data[i] = registers[i].getValue();
+            }
+            log.info("데이터 읽기 성공: temperature={}, humidity={}", data[0], data[1]);
+            return data;
         } catch (ModbusException e) {
             log.error("Modbus 데이터 읽기 실패: {}", e.getMessage());
-            return new int[] {0, 0};
+            if (e.getMessage().contains("Connection reset")) {
+                reconnect();
+            }
+            return new int[]{0, 0};
+        }
+    }
+
+    private void reconnect() {
+        try {
+            if (modbusMaster.isConnected()) {
+                modbusMaster.disconnect();
+            }
+            modbusMaster.connect();
+            log.info("Modbus TCP 재연결 성공");
         } catch (Exception e) {
-            log.error("예상치 못한 오류 발생: {}", e.getMessage());
-            return new int[] {0, 0};
+            log.error("Modbus TCP 재연결 실패: {}", e.getMessage());
+        }
+    }
+
+    @PreDestroy
+    public void disconnect() {
+        if (modbusMaster != null && modbusMaster.isConnected()) {
+            modbusMaster.disconnect();
+            log.info("Modbus TCP 연결 해제");
         }
     }
 } 
