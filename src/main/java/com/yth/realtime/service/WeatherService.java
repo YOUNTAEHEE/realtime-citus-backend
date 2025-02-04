@@ -41,17 +41,17 @@ public class WeatherService {
     }
 
     public List<Map<String, String>> fetchWeatherData(String dateFirst, String dateLast, String region) {
-        log.info("=== 날씨 데이터 조회 시작 ===");
-        log.info("요청 파라미터: dateFirst={}, dateLast={}, region={}", dateFirst, dateLast, region);
+        // log.info("=== 날씨 데이터 조회 시작 ===");
+        // log.info("요청 파라미터: dateFirst={}, dateLast={}, region={}", dateFirst, dateLast, region);
         
         String startDateTime = dateFirst.replaceAll("-", "") + "0000";
         String endDateTime = dateLast.replaceAll("-", "") + "2359";
-        log.info("변환된 날짜시간: start={}, end={}", startDateTime, endDateTime);
+        // log.info("변환된 날짜시간: start={}, end={}", startDateTime, endDateTime);
         
         // MongoDB에서 데이터 조회
         List<Weather> savedData = weatherRepository.findByRegionAndDateTimeBetweenOrderByDateTimeDesc(
             region, startDateTime, endDateTime);
-        log.info("MongoDB 조회 결과: {} 건", savedData.size());
+        // log.info("MongoDB 조회 결과: {} 건", savedData.size());
         
         // 요청한 날짜 범위의 모든 날짜
         List<String> requestedDates = getDateRange(dateFirst, dateLast);

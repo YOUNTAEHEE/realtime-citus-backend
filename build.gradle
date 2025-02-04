@@ -34,6 +34,9 @@ dependencies {
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	implementation 'org.springframework.boot:spring-boot-starter-websocket'
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'net.wimpi:jamod:1.2' // 또는 modbus4j 사용 가능
 }
 
 tasks.named('test') {
