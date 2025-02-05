@@ -1,3 +1,4 @@
+// 이 서비스는 제거해야 합니다
 package com.yth.realtime.service;
 
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -15,7 +16,7 @@ public class ModbusPollingService {
         this.webSocketHandler = webSocketHandler;
     }
 
-    @Scheduled(fixedRate = 1000) // 1초마다 실행
+    @Scheduled(fixedRate = 1000) // 중복 실행의 원인
     public void pollAndBroadcast() {
         webSocketHandler.broadcastData();
     }
