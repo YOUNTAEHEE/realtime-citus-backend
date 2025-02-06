@@ -20,6 +20,9 @@ public class WebSocketConfig implements WebSocketConfigurer {
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(webSocketHandler, "/modbus")
-                .setAllowedOrigins("http://localhost:3000"); // React 개발 서버 주소
+                .setAllowedOrigins(
+                    "http://localhost:3000",
+                    "http://localhost:3001"
+                );
     }
 }

@@ -5,7 +5,8 @@ spring:
     cors:
       allowed-origins:
         - http://localhost:5173
-        - http://localhost:3000 # React 개발 서버 주소
+        - http://localhost:3000
+        - http://localhost:3001 # React 개발 서버 주소
       allowed-methods: GET,POST,PUT,DELETE,OPTIONS
       allowed-headers: "*"
       allow-credentials: true
@@ -21,3 +22,25 @@ server:
 weather:
   api:
     key: ${WEATHER_API_KEY}
+
+logging:
+  level:
+    root: DEBUG
+    org.springframework: DEBUG
+    com.yth.realtime: DEBUG
+    com.influxdb.client: DEBUG
+    com.yth.realtime.service: DEBUG
+    com.yth.realtime.controller: DEBUG
+    com.ghgande.j2mod: DEBUG
+
+influxdb:
+  url: http://localhost:8086
+  token: zZpdEV4H9H4iNYjc4FjIdntwA2FdmSxAfP6URmsNNJKPpVTiyzgNxqkLL33ZJYpuZXMIJVKLnMVM9Nmq-TlrCA==
+  org: youn
+  bucket: ydata
+
+modbus:
+  host: 10.11.17.103 # Modbus 장치의 실제 IP 주소
+  port: 502
+  timeout: 3000
+  slave-id: 1
