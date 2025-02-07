@@ -44,14 +44,24 @@ public class WeatherService {
         // log.info("=== 날씨 데이터 조회 시작 ===");
         // log.info("요청 파라미터: dateFirst={}, dateLast={}, region={}", dateFirst, dateLast, region);
         
+        // 날짜 형식 변환 및 로깅 추가
         String startDateTime = dateFirst.replaceAll("-", "") + "0000";
         String endDateTime = dateLast.replaceAll("-", "") + "2359";
-        // log.info("변환된 날짜시간: start={}, end={}", startDateTime, endDateTime);
+        log.info("조회 기간: {} ~ {}", startDateTime, endDateTime);
         
         // MongoDB에서 데이터 조회
         List<Weather> savedData = weatherRepository.findByRegionAndDateTimeBetweenOrderByDateTimeDesc(
             region, startDateTime, endDateTime);
-        // log.info("MongoDB 조회 결과: {} 건", savedData.size());
+        log.info("조회된 데이터 수: {}", savedData.size());
+        
+        // 데이터 유효성 검사 추가
+        if (savedData.isEmpty()) {
+            log.warn("해당 기간의 데이터가 없습니다.");
+        } else {
+            log.info("첫 번째 데이터: {}, 마지막 데이터: {}", 
+                savedData.get(0).getDateTime(), 
+                savedData.get(savedData.size()-1).getDateTime());
+        }
         
         // 요청한 날짜 범위의 모든 날짜
         List<String> requestedDates = getDateRange(dateFirst, dateLast);
