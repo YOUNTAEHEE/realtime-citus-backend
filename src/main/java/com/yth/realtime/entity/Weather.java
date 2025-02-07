@@ -17,8 +17,8 @@ public class Weather {
     private String dateTime;  // YYMMDDHHMI
     private String temperature;  // TA
     private String windSpeed;   // WS
-    private String pressure;    // PR
-    private String dewPoint;    // TD
+    private String humidity;    // HM
+    private String windDirection;    // WD
     private String region;
     private LocalDateTime createdAt;
 
@@ -34,8 +34,8 @@ public class Weather {
         }
         weather.setTemperature(data.get("TA"));
         weather.setWindSpeed(data.get("WS"));
-        weather.setPressure(data.get("PR"));
-        weather.setDewPoint(data.get("TD"));
+        weather.setHumidity(data.get("HM"));
+        weather.setWindDirection(data.get("WD"));
         weather.setRegion(region);
         weather.setCreatedAt(LocalDateTime.now());
         return weather;
@@ -46,8 +46,8 @@ public class Weather {
         map.put("YYMMDDHHMI", dateTime);
         map.put("TA", temperature);
         map.put("WS", windSpeed);
-        map.put("PR", pressure);
-        map.put("TD", dewPoint);
+        map.put("HM", humidity);
+        map.put("WD", windDirection);
         return map;
     }
     

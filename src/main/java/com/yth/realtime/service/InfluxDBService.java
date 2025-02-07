@@ -1,7 +1,5 @@
 package com.yth.realtime.service;
 
-import java.time.Instant;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,7 +7,6 @@ import org.springframework.stereotype.Service;
 
 import com.influxdb.client.InfluxDBClient;
 import com.influxdb.client.WriteApiBlocking;
-import com.influxdb.client.domain.WritePrecision;
 import com.influxdb.client.write.Point;
 
 @Service
@@ -36,8 +33,8 @@ public class InfluxDBService {
                 .measurement("sensor_data")
                 .addTag("device", "DHT22")
                 .addField("temperature", temperature)
-                .addField("humidity", humidity)
-                .time(Instant.now(), WritePrecision.MS);
+                .addField("humidity", humidity);
+                // .time(Instant.now(), WritePrecision.MS);
 
             writeApi.writePoint(bucket, org, point);
             log.info("InfluxDB 데이터 저장 완료 - 온도: {}°C, 습도: {}%", temperature, humidity);

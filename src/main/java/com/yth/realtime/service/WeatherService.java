@@ -190,13 +190,13 @@ public class WeatherService {
                 // 기온(TA)과 풍속(WS) 데이터 위치 찾기
                 int taIndex = -1;
                 int wsIndex = -1;
-                int tdIndex = -1;
-                int prIndex = -1;
+                int hmIndex = -1;
+                int wdIndex = -1;
                 for (int j = 0; j < headers.length; j++) {
                     if (headers[j].equals("TA")) taIndex = j;
                     if (headers[j].equals("WS")) wsIndex = j;
-                    if (headers[j].equals("PR")) prIndex = j;
-                    if (headers[j].equals("TD")) tdIndex = j;
+                    if (headers[j].equals("HM")) hmIndex = j;
+                    if (headers[j].equals("WD")) wdIndex = j;
                 }
 
                 // 찾은 인덱스로 데이터 추출
@@ -206,11 +206,11 @@ public class WeatherService {
                 if (wsIndex != -1 && wsIndex < values.length) {
                     entry.put("WS", values[wsIndex]);
                 }
-                if (tdIndex != -1 && tdIndex < values.length) {
-                    entry.put("TD", values[tdIndex]);
+                if (hmIndex != -1 && hmIndex < values.length) {
+                    entry.put("HM", values[hmIndex]);
                 }
-                if (prIndex != -1 && prIndex < values.length) {
-                    entry.put("PR", values[prIndex]);
+                if (wdIndex != -1 && wdIndex < values.length) {
+                    entry.put("WD", values[wdIndex]);
                 }
 
                 result.add(entry);
@@ -299,8 +299,8 @@ public class WeatherService {
                 result.put("datetime", formattedDate + " " + formattedTime);
                 result.put("temperature", extremeTemp.getTemperature());
                 result.put("windSpeed", extremeTemp.getWindSpeed());
-                result.put("pressure", extremeTemp.getPressure());
-                result.put("dewPoint", extremeTemp.getDewPoint());
+                result.put("humidity", extremeTemp.getHumidity());
+                result.put("windDirection", extremeTemp.getWindDirection());
                 
                 log.info("검색 결과: {}", result);
                 return result;
