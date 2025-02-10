@@ -36,9 +36,14 @@ public class WebSocketHandler extends TextWebSocketHandler {
         scheduler.scheduleAtFixedRate(() -> {
             try {
                 if (session.isOpen()) {
-                    int[] data = modbusService.readModbusData();
-                    String jsonData = String.format("{\"temperature\": %d, \"humidity\": %d}", 
-                        data[0], data[1]);
+                    int[] data1 = modbusService.readModbusData1();
+                    int[] data2 = modbusService.readModbusData2();
+                    
+                    String jsonData = String.format(
+                        "{\"sensor1\": {\"temperature\": %d, \"humidity\": %d}, " +
+                        "\"sensor2\": {\"temperature\": %d, \"humidity\": %d}}", 
+                        data1[0], data1[1], data2[0], data2[1]);
+                    
                     session.sendMessage(new TextMessage(jsonData));
                     log.debug("웹소켓으로 데이터 전송: {}", jsonData);
                 }

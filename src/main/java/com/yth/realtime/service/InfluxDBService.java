@@ -1,5 +1,7 @@
 package com.yth.realtime.service;
 
+import java.time.Instant;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -7,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import com.influxdb.client.InfluxDBClient;
 import com.influxdb.client.WriteApiBlocking;
+import com.influxdb.client.domain.WritePrecision;
 import com.influxdb.client.write.Point;
 
 @Service
@@ -25,22 +28,20 @@ public class InfluxDBService {
         this.influxDBClient = influxDBClient;
     }
 
-    public void saveSensorData(double temperature, double humidity) {
+    public void saveSensorData(double temperature, double humidity, String deviceId) {
+        Point point = Point.measurement("sensor_data")
+            .addTag("device", deviceId)
+            .addField("temperature", temperature)
+            .addField("humidity", humidity)
+            .time(Instant.now(), WritePrecision.NS);
+        
         try {
             WriteApiBlocking writeApi = influxDBClient.getWriteApiBlocking();
-            
-            Point point = Point
-                .measurement("sensor_data")
-                .addTag("device", "DHT22")
-                .addField("temperature", temperature)
-                .addField("humidity", humidity);
-                // .time(Instant.now(), WritePrecision.MS);
-
             writeApi.writePoint(bucket, org, point);
-            log.info("InfluxDB 데이터 저장 완료 - 온도: {}°C, 습도: {}%", temperature, humidity);
-            
+            log.info("데이터 저장 성공 - 장치: {}, 온도: {}°C, 습도: {}%", 
+                deviceId, temperature, humidity);
         } catch (Exception e) {
-            log.error("InfluxDB 데이터 저장 실패: {}", e.getMessage(), e);
+            log.error("데이터 저장 실패: {}", e.getMessage());
         }
     }
 } 
