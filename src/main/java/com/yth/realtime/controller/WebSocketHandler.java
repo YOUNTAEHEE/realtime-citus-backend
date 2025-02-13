@@ -42,7 +42,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
     // 컨트롤러에서 호출할 메서드
     public void addDeviceToSession(ModbusDevice device) {
         sessionDevices.put(device.getDeviceId(), device);
-        sessions.forEach(session -> {
+          sessions.forEach(session -> {
             try {
                 startSendingData(session, device);
             } catch (Exception e) {

@@ -28,11 +28,12 @@ public class InfluxDBService {
         this.influxDBClient = influxDBClient;
     }
 
-    public void saveSensorData(double temperature, double humidity, String deviceId) {
+    public void saveSensorData(double temperature, double humidity, String deviceHost, String deviceId) {
         Point point = Point.measurement("sensor_data")
             .addTag("device", deviceId)
             .addField("temperature", temperature)
             .addField("humidity", humidity)
+            .addField("host", deviceHost)
             .time(Instant.now(), WritePrecision.NS);
         
         try {

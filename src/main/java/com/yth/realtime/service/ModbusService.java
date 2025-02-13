@@ -92,7 +92,7 @@ public class ModbusService {
             // 데이터 저장
             double temperature = data[0] / 10.0;
             double humidity = data[1] / 10.0;
-            influxDBService.saveSensorData(temperature, humidity, device.getHost());
+            influxDBService.saveSensorData(temperature, humidity, device.getHost(), device.getDeviceId());
 
             log.debug("데이터 읽기 성공 - deviceId: {}, temp: {}, humidity: {}", 
                 device.getDeviceId(), temperature, humidity);
@@ -116,66 +116,5 @@ public class ModbusService {
         }
         registeredDevices.removeIf(device -> device.getDeviceId().equals(deviceId));
     }
-
-
-    /**
-     * 연결이 끊긴 경우 재연결 시도
-     */
-    // private void reconnect(ModbusDevice device, ModbusTCPMaster modbusMaster) {
-    //     try {
-    //         if (modbusMaster.isConnected()) {
-    //             modbusMaster.disconnect();
-    //         }
-    //         modbusMaster.connect();
-    //         System.out.println("TCP 재연결 성공");
-    //     } catch (Exception e) {
-    //         // IOException, ModbusException, 기타 예외 통합 처리
-    //         System.out.println("TCP 재연결 실패: " + e.getMessage());
-    //     }
-    // }
-    private void reconnect(ModbusDevice device, ModbusTCPMaster modbusMaster) {
-        try {
-            log.info("재연결 시도 - deviceId: {}, host: {}", device.getDeviceId(), device.getHost());
-            if (modbusMaster.isConnected()) {
-                modbusMaster.disconnect();
-            }
-            Thread.sleep(1000); // 재연결 전 잠시 대기
-            modbusMaster.connect();
-            
-            // 연결 테스트
-            Register[] testRead = modbusMaster.readMultipleRegisters(
-                device.getSlaveId(), 
-                device.getStartAddress(), 
-                device.getLength()
-            );
-            
-            if (testRead != null && testRead.length > 0) {
-                log.info("재연결 성공: {}", device.getDeviceId());
-            } else {
-                throw new RuntimeException("장치 응답 없음");
-            }
-        } catch (Exception e) {
-            log.error("재연결 실패: {} - {}", device.getDeviceId(), e.getMessage(), e);
-            throw new RuntimeException("재연결 실패: " + e.getMessage());
-        }
-    }
-    public boolean testConnection(ModbusDevice device) {
-        try {
-            ModbusTCPMaster testMaster = new ModbusTCPMaster(device.getHost(), device.getPort());
-            testMaster.setTimeout(3000);
-            testMaster.connect();
-            
-            Register[] testRead = testMaster.readMultipleRegisters(
-                device.getSlaveId(), 
-                device.getStartAddress(), 
-                device.getLength()
-            );
-            
-            testMaster.disconnect();
-            return testRead != null && testRead.length > 0;
-        } catch (Exception e) {
-            log.error("연결 테스트 실패: {} - {}", device, e.getMessage());
-            return false;
-        }
-    }
+    
 }

@@ -16,7 +16,7 @@ spring:
       port: 27017
       database: test
   websocket:
-    allowed-origins: "*"    # 웹소켓 CORS 설정 추가
+    allowed-origins: "*" # 웹소켓 CORS 설정 추가
 
 server:
   port: 8080
@@ -27,14 +27,15 @@ weather:
 
 logging:
   level:
-    root: DEBUG
+    root: INFO
     org.springframework: DEBUG
     com.yth.realtime: DEBUG
     com.influxdb.client: DEBUG
     com.yth.realtime.service: DEBUG
     com.yth.realtime.controller: DEBUG
     com.ghgande.j2mod: DEBUG
-    org.springframework.web.socket: TRACE    # 웹소켓 로그 레벨을 TRACE로 변경
+    org.springframework.web.socket: DEBUG
+    com.yth.realtime.controller.WebSocketHandler: DEBUG
 
 influxdb:
   url: http://localhost:8086
