@@ -9,6 +9,7 @@ import lombok.ToString;
 @ToString
 public class ModbusDevice {
     private String deviceId;
+    private String name;
     private String host;
     private int port;
     private int startAddress;
@@ -16,8 +17,9 @@ public class ModbusDevice {
     private int slaveId;
 
 
-    public ModbusDevice(String deviceId, String host, int port, int startAddress, int length, int slaveId) {
+    public ModbusDevice(String deviceId, String name, String host, int port, int startAddress, int length, int slaveId) {
         this.deviceId = deviceId;
+        this.name = name;
         this.host = host;
         this.port = port;
         this.startAddress = startAddress;

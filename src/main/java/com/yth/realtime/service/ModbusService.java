@@ -1,9 +1,12 @@
 package com.yth.realtime.service;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +15,8 @@ import org.springframework.stereotype.Service;
 import com.ghgande.j2mod.modbus.facade.ModbusTCPMaster;
 import com.ghgande.j2mod.modbus.procimg.Register;
 import com.yth.realtime.dto.ModbusDevice;
+import com.yth.realtime.entity.ModbusDeviceDocument;
+import com.yth.realtime.repository.ModbusDeviceRepository;
 
 @Service
 public class ModbusService {
@@ -19,9 +24,10 @@ public class ModbusService {
     private final InfluxDBService influxDBService;
     private final List<ModbusDevice> registeredDevices = new CopyOnWriteArrayList<>();
     private final Map<String, ModbusTCPMaster> modbusMasters = new ConcurrentHashMap<>();
-
-    public ModbusService(InfluxDBService influxDBService) {
+    private final ModbusDeviceRepository modbusDeviceRepository;
+    public ModbusService(InfluxDBService influxDBService, ModbusDeviceRepository modbusDeviceRepository) {
         this.influxDBService = influxDBService;
+        this.modbusDeviceRepository = modbusDeviceRepository;
     }
 
     /**
@@ -45,6 +51,9 @@ public class ModbusService {
             if (testRead != null && testRead.length > 0) {
                 modbusMasters.put(device.getDeviceId(), master);
                 registeredDevices.add(device);
+                if(!modbusDeviceRepository.existsByDeviceId(device.getDeviceId())){
+                    modbusDeviceRepository.save(ModbusDeviceDocument.from(device));
+                }
                 log.info("장치 연결 성공: {}", device);
                 return true;
             } else {
@@ -116,5 +125,32 @@ public class ModbusService {
         }
         registeredDevices.removeIf(device -> device.getDeviceId().equals(deviceId));
     }
-    
+
+    public List<ModbusDevice> deviceList() {
+        try {
+            return modbusDeviceRepository.findAll()
+                    .stream()
+                    .filter(Objects::nonNull)
+                    .map(document -> {
+                        try {
+                            return document.toModbusDevice();
+                        } catch (Exception e) {
+                            log.error("디바이스 변환 실패: {} - {}", document.getDeviceId(), e.getMessage());
+                            return null;
+                        }
+                    })
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("디바이스 목록 조회 실패: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+    public boolean deleteDevice(String deviceId) {
+        long result = modbusDeviceRepository.deleteByDeviceId(deviceId);
+        if(result > 0){
+            return true;
+        }
+        return false;
+    }
 }
