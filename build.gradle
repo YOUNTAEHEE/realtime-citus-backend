@@ -44,7 +44,7 @@ dependencies {
 
 	//influx db
 	  implementation "com.influxdb:influxdb-client-java:6.10.0"
-
+implementation 'org.json:json:20231013'
 }
 
 tasks.named('test') {

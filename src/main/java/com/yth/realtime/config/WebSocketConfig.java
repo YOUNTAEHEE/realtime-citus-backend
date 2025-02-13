@@ -20,9 +20,6 @@ public class WebSocketConfig implements WebSocketConfigurer {
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(webSocketHandler, "/modbus")
-                .setAllowedOrigins(
-                    "http://localhost:3000",
-                    "http://localhost:3001"
-                );
+                .setAllowedOrigins("*"); // CORS 허용
     }
 }

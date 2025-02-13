@@ -15,6 +15,8 @@ spring:
       host: localhost
       port: 27017
       database: test
+  websocket:
+    allowed-origins: "*"    # 웹소켓 CORS 설정 추가
 
 server:
   port: 8080
@@ -32,16 +34,10 @@ logging:
     com.yth.realtime.service: DEBUG
     com.yth.realtime.controller: DEBUG
     com.ghgande.j2mod: DEBUG
+    org.springframework.web.socket: TRACE    # 웹소켓 로그 레벨을 TRACE로 변경
 
 influxdb:
   url: http://localhost:8086
   token: zZpdEV4H9H4iNYjc4FjIdntwA2FdmSxAfP6URmsNNJKPpVTiyzgNxqkLL33ZJYpuZXMIJVKLnMVM9Nmq-TlrCA==
   org: youn
   bucket: ydata
-
-modbus:
-  host1: 192.168.10.205
-  host2: 192.168.10.206
-  port: 502
-  timeout: 3000
-  slave-id: 1
