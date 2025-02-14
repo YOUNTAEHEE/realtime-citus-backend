@@ -18,13 +18,20 @@ import com.yth.realtime.dto.ModbusDevice;
 import com.yth.realtime.entity.ModbusDeviceDocument;
 import com.yth.realtime.repository.ModbusDeviceRepository;
 
+import jakarta.annotation.PreDestroy;
+import lombok.extern.slf4j.Slf4j;
+
 @Service
+@Slf4j
 public class ModbusService {
     private static final Logger log = LoggerFactory.getLogger(ModbusService.class);
     private final InfluxDBService influxDBService;
     private final List<ModbusDevice> registeredDevices = new CopyOnWriteArrayList<>();
     private final Map<String, ModbusTCPMaster> modbusMasters = new ConcurrentHashMap<>();
+    private final Map<String, Long> lastDataSaveTime = new ConcurrentHashMap<>();
+    private static final long SAVE_INTERVAL = 5000; // 5초
     private final ModbusDeviceRepository modbusDeviceRepository;
+
     public ModbusService(InfluxDBService influxDBService, ModbusDeviceRepository modbusDeviceRepository) {
         this.influxDBService = influxDBService;
         this.modbusDeviceRepository = modbusDeviceRepository;
@@ -35,10 +42,11 @@ public class ModbusService {
      */
     public boolean addDevice(ModbusDevice device) {
         try {
+           
             // 장치 연결 테스트
             ModbusTCPMaster master = new ModbusTCPMaster(device.getHost(), device.getPort());
-            master.setTimeout(5000);
-            master.setRetries(3);
+            master.setTimeout(1000);
+            master.setRetries(1);
             master.connect();  // 연결 시도
             
             // 테스트 읽기 수행
@@ -68,50 +76,56 @@ public class ModbusService {
     /**
      * Modbus 데이터를 읽어서 InfluxDB에 저장하고 반환
      */
-    public int[] readModbusData(ModbusDevice device) {
-        ModbusTCPMaster master = modbusMasters.get(device.getDeviceId());
-        
-        if (master == null) {
-            log.error("ModbusTCPMaster not found for device: {}", device.getDeviceId());
-            return new int[]{0, 0};
-        }
-
+    public int[] readModbusData(ModbusDevice device) throws Exception {
+        ModbusTCPMaster master = getOrCreateConnection(device);
         try {
-            if (!master.isConnected()) {
-                log.info("재연결 시도: {}", device.getDeviceId());
-                master.connect();
-            }
-
             Register[] registers = master.readMultipleRegisters(
-                device.getSlaveId(), 
-                device.getStartAddress(), 
+                device.getSlaveId(),
+                device.getStartAddress(),
                 device.getLength()
             );
 
-            if (registers == null || registers.length == 0) {
-                log.error("레지스터 읽기 실패: {}", device.getDeviceId());
-                return new int[]{0, 0};
+            int[] data = new int[]{registers[0].getValue(), registers[1].getValue()};
+            
+            // 마지막 저장 시간 확인
+            long currentTime = System.currentTimeMillis();
+            Long lastSave = lastDataSaveTime.get(device.getDeviceId());
+            
+            // 마지막 저장으로부터 5초가 지났거나 처음 저장하는 경우에만 저장
+            if (lastSave == null || currentTime - lastSave >= SAVE_INTERVAL) {
+                double temperature = data[0] / 10.0;
+                double humidity = data[1] / 10.0;
+                
+                influxDBService.saveSensorData(temperature, humidity, device.getHost(), device.getDeviceId());
+                lastDataSaveTime.put(device.getDeviceId(), currentTime);
+                
+                log.debug("데이터 저장 완료 - deviceId: {}, temp: {}, humidity: {}", 
+                    device.getDeviceId(), temperature, humidity);
             }
-
-            int[] data = new int[device.getLength()];
-            for (int i = 0; i < device.getLength(); i++) {
-                data[i] = registers[i].getValue();
-            }
-
-            // 데이터 저장
-            double temperature = data[0] / 10.0;
-            double humidity = data[1] / 10.0;
-            influxDBService.saveSensorData(temperature, humidity, device.getHost(), device.getDeviceId());
-
-            log.debug("데이터 읽기 성공 - deviceId: {}, temp: {}, humidity: {}", 
-                device.getDeviceId(), temperature, humidity);
 
             return data;
-
         } catch (Exception e) {
-            log.error("데이터 읽기 실패: {} - {}", device.getDeviceId(), e.getMessage());
-            return new int[]{0, 0};
+            log.error("데이터 읽기 실패: {}", device.getDeviceId(), e);
+            throw e;
         }
+    }
+
+    private ModbusTCPMaster getOrCreateConnection(ModbusDevice device) throws Exception {
+        ModbusTCPMaster master = modbusMasters.get(device.getDeviceId());
+        if (master == null || !master.isConnected()) {
+            try {
+                master = new ModbusTCPMaster(device.getHost(), device.getPort());
+                master.setTimeout(1000);
+                master.setRetries(1);
+                master.connect();  // 예외 발생 가능
+                modbusMasters.put(device.getDeviceId(), master);
+                log.info("새로운 Modbus 연결 생성: {}", device.getDeviceId());
+            } catch (Exception e) {
+                log.error("Modbus 연결 실패: {} - {}", device.getDeviceId(), e.getMessage());
+                throw e;  // 상위로 예외 전파
+            }
+        }
+        return master;
     }
 
     public void removeDevice(String deviceId) {
@@ -152,5 +166,18 @@ public class ModbusService {
             return true;
         }
         return false;
+    }
+
+    @PreDestroy
+    public void cleanup() {
+        modbusMasters.forEach((deviceId, master) -> {
+            try {
+                master.disconnect();
+            } catch (Exception e) {
+                log.error("연결 해제 실패: {}", deviceId, e);
+            }
+        });
+        modbusMasters.clear();
+        lastDataSaveTime.clear();
     }
 }
