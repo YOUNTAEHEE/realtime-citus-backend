@@ -17,6 +17,15 @@ spring:
       database: test
   websocket:
     allowed-origins: "*" # 웹소켓 CORS 설정 추가
+  task:
+    scheduling:
+      pool:
+        size: 5
+      thread-name-prefix: scheduled-
+    execution:
+      shutdown:
+        await-termination: true
+        await-termination-period: 60s
 
 server:
   port: 8080
@@ -36,9 +45,16 @@ logging:
     com.ghgande.j2mod: DEBUG
     org.springframework.web.socket: DEBUG
     com.yth.realtime.controller.WebSocketHandler: DEBUG
+    org.springframework.scheduling: DEBUG
 
 influxdb:
-  url: http://localhost:8086
-  token: zZpdEV4H9H4iNYjc4FjIdntwA2FdmSxAfP6URmsNNJKPpVTiyzgNxqkLL33ZJYpuZXMIJVKLnMVM9Nmq-TlrCA==
-  org: youn
-  bucket: ydata
+  url: http://localhost:8086 # InfluxDB 서버 주소
+  token: ${INFLUX_TOKEN}
+  org: youn # InfluxDB Organization 이름
+  bucket: ydata # 기본 버킷 이름
+  retention-policy: autogen # 데이터 보존 정책 (기본값: autogen)
+  timeout: 5000 # 요청 타임아웃 (ms)
+  connection-pool-size: 10 # 연결 풀 크기 (동시 연결 제한)
+  logging-level: BODY # 로그 레벨 (NONE, BASIC, HEADERS, BODY 중 선택)
+  scheduler:
+    delay: 60000 # 1분

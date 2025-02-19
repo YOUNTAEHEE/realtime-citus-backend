@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
 import com.influxdb.client.InfluxDBClient;
 import com.influxdb.client.InfluxDBClientFactory;
 
+import io.github.cdimascio.dotenv.Dotenv;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 
@@ -16,22 +17,24 @@ import jakarta.annotation.PreDestroy;
 public class InfluxDBConfig {
     private static final Logger log = LoggerFactory.getLogger(InfluxDBConfig.class);
     
-    @Value("${influxdb.url:http://localhost:8086}")
-    private String url;
     
-    @Value("${influxdb.token}")
+    private final String url = "http://localhost:8086";
     private String token;
-    
-    @Value("${influxdb.org:youn}")
-    private String org;
-    
-    @Value("${influxdb.bucket:ydata}")
-    private String bucket;
+    private final String org = "youn";
+    private final String bucket = "ydata";
     
     private InfluxDBClient influxDBClient;
     
     @PostConstruct
     public void init() {
+         Dotenv dotenv = Dotenv.configure()
+                            .directory("./") // .env 파일 위치 지정
+                            .ignoreIfMissing()
+                            .load();
+        
+        // .env 파일에서 토큰 읽기
+        token = dotenv.get("INFLUX_TOKEN");
+        
         log.info("InfluxDB 설정 확인:");
         log.info("URL: {}", url);
         log.info("Token 존재 여부: {}", token != null && !token.isEmpty() ? "Yes" : "No");
