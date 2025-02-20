@@ -14,6 +14,7 @@ import com.influxdb.client.domain.Bucket;
 import com.influxdb.client.domain.BucketRetentionRules;
 import com.influxdb.query.FluxTable;
 
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
@@ -33,7 +34,15 @@ public class InfluxDBTaskService {
     public InfluxDBTaskService(InfluxDBClient influxDBClient) {
         this.influxDBClient = influxDBClient;
     }
-
+    @PostConstruct
+    public void init() {
+        try {
+            initializeBuckets();
+        } catch (Exception e) {
+            log.error("❌ InfluxDBTaskService 초기화 실패", e);
+            throw new RuntimeException("서비스 초기화 실패", e);
+        }
+    }
     private void initializeBuckets() {
         List.of(SOURCE_BUCKET, AGG_BUCKET_2MIN, AGG_BUCKET_4MIN).forEach(this::createBucketIfNotExists);
     }
