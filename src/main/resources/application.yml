@@ -41,11 +41,8 @@ logging:
     com.yth.realtime: DEBUG
     com.influxdb.client: DEBUG
     com.yth.realtime.service: DEBUG
-    com.yth.realtime.controller: DEBUG
-    com.ghgande.j2mod: DEBUG
-    org.springframework.web.socket: DEBUG
-    com.yth.realtime.controller.WebSocketHandler: DEBUG
     org.springframework.scheduling: DEBUG
+    com.ghgande.j2mod.modbus.io: ERROR 
 
 influxdb:
   url: http://localhost:8086 # InfluxDB 서버 주소

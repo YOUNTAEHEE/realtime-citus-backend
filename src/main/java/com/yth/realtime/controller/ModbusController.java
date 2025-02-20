@@ -66,4 +66,10 @@ public class ModbusController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
+
+    @GetMapping("/device/check/{deviceId}")
+    public ResponseEntity<?> checkDevice(@PathVariable String deviceId) {
+        boolean exists = modbusService.deviceExists(deviceId);
+        return exists ? ResponseEntity.ok().build() : ResponseEntity.notFound().build();
+    }
 }

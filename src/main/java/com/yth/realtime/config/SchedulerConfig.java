@@ -20,11 +20,8 @@ public class SchedulerConfig {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
         scheduler.setPoolSize(5);
         scheduler.setThreadNamePrefix("scheduled-task-");
-        scheduler.setWaitForTasksToCompleteOnShutdown(true);
-        scheduler.setAwaitTerminationSeconds(60);
-        scheduler.setErrorHandler(throwable -> {
-            log.error("스케줄러 실행 중 에러 발생: ", throwable);
-        });
+        scheduler.setErrorHandler(throwable -> 
+            log.error("스케줄러 실행 중 에러 발생: ", throwable));
         return scheduler;
     }
 } 

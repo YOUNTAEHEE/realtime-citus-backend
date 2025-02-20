@@ -31,16 +31,16 @@ public class InfluxDBService {
     public void saveSensorData(double temperature, double humidity, String deviceHost, String deviceId) {
         Point point = Point.measurement("sensor_data")
             .addTag("device", deviceId)
+            .addTag("host", deviceHost)
             .addField("temperature", temperature)
             .addField("humidity", humidity)
-            .addField("host", deviceHost)
             .time(Instant.now(), WritePrecision.NS);
         
         try {
             WriteApiBlocking writeApi = influxDBClient.getWriteApiBlocking();
             writeApi.writePoint(bucket, org, point);
-            log.info("데이터 저장 성공 - 장치: {}, 온도: {}°C, 습도: {}%", 
-                deviceId, temperature, humidity);
+            log.info("데이터 저장 성공 - 장치: {}, 호스트: {}, 온도: {}°C, 습도: {}%", 
+                deviceId, deviceHost, temperature, humidity);
         } catch (Exception e) {
             log.error("데이터 저장 실패: {}", e.getMessage());
         }
