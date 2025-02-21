@@ -64,7 +64,7 @@ public class InfluxDBTaskService {
         try {
             String fluxQuery = String.format("""
                     from(bucket: "%s")
-                      |> range(start: -10m)
+                      |> range(start: -1h)
                       |> filter(fn: (r) => r._measurement == "sensor_data")
                       |> filter(fn: (r) => r._field == "temperature" or r._field == "humidity")
                       |> group(columns: ["device", "host", "_field"])
@@ -110,7 +110,7 @@ public class InfluxDBTaskService {
         try {
             String fluxQuery = String.format("""
                                 from(bucket: "%s")
-                      |> range(start: -10m)
+                      |> range(start: -1h)
                       |> filter(fn: (r) => r._measurement == "sensor_data_avg")
                       |> filter(fn: (r) => r._field == "temperature" or r._field == "humidity")
                       |> group(columns: ["device", "host", "_field"])
@@ -222,7 +222,7 @@ public class InfluxDBTaskService {
         try {
             String fluxQuery = String.format("""
                     from(bucket: "%s")
-                      |> range(start: -10m)
+                      |> range(start: -1h)
                       |> filter(fn: (r) => r._measurement == "%s")
                       |> drop(columns: ["_measurement"]) // measurement 삭제 후 버킷에서 제거
                     """, bucketName, measurement);
