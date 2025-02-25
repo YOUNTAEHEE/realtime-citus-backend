@@ -11,23 +11,26 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.yth.realtime.service.ShortTermForecastService;
 import com.yth.realtime.service.WeatherService;
 
 import lombok.extern.slf4j.Slf4j;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = {"http://localhost:3000","http://localhost:3001"})  // React 서버주소
+@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:3001" }) // React 서버주소
 @Slf4j
 public class WeatherController {
-    
+
     private final WeatherService weatherService;
-    
+    private final ShortTermForecastService shortTermForecastService;
+
     @Autowired
-    public WeatherController(WeatherService weatherService) {
+    public WeatherController(WeatherService weatherService, ShortTermForecastService shortTermForecastService) {
         this.weatherService = weatherService;
+        this.shortTermForecastService = shortTermForecastService;
     }
-    
+
     @GetMapping("/weather")
     public ResponseEntity<?> getWeatherData(
             @RequestParam("date-first") String dateFirst,
@@ -47,11 +50,27 @@ public class WeatherController {
 
     @GetMapping("/temp-search")
     public ResponseEntity<?> searchTemperature(
-        @RequestParam("date") String date,
-        @RequestParam("type") String type,  // "hight_temp" 또는 "low_temp"
-        @RequestParam("region") String region
-    ) {
+            @RequestParam("date") String date,
+            @RequestParam("type") String type, // "hight_temp" 또는 "low_temp"
+            @RequestParam("region") String region) {
         Map<String, Object> result = weatherService.findTemperatureExtreme(date, type, region);
         return ResponseEntity.ok(result);
+    }
+
+    // 단기 예보
+    @GetMapping("/short-term-forecast")
+    public ResponseEntity<?> getShortTermForecast(
+            @RequestParam("region") String region) {
+        try {
+            System.out.println("region: " + region);
+            List<Map<String, String>> forecast = shortTermForecastService.fetchShortTermForecast(region);
+            if (forecast.isEmpty()) {
+                return ResponseEntity.noContent().build();
+            }
+            return ResponseEntity.ok(forecast);
+        } catch (Exception e) {
+            log.error("날씨 데이터 조회 중 오류: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body("데이터 조회 실패");
+        }
     }
 }

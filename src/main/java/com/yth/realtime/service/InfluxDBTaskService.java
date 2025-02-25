@@ -1,5 +1,6 @@
 package com.yth.realtime.service;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -8,6 +9,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import com.influxdb.client.BucketsApi;
+import com.influxdb.client.DeleteApi;
 import com.influxdb.client.InfluxDBClient;
 import com.influxdb.client.QueryApi;
 import com.influxdb.client.domain.Bucket;
@@ -52,19 +54,22 @@ public class InfluxDBTaskService {
     /**
      * ✅ 3분마다 실행 → `ydata`에서 최근 2분 데이터의 평균을 `ydata_2min_avg`에 저장
      */
-    @Scheduled(fixedRate = 181000, initialDelay = 61000)
+    // @Scheduled(fixedRate = 23 * 60 * 60 * 1000, initialDelay = 61000)
+    // @Scheduled(cron = "0 0 22 * * *", zone = "Asia/Seoul")
+    // @Scheduled(fixedRate = 210000, initialDelay = 61000)
+    @Scheduled(fixedRate = 120000)
     public void aggregateDataTo2Min() {
         // String taskId = "2min";
         // if (!canExecuteTask(taskId)) {
-        //     log.debug("2분 평균 데이터 집계 스킵 (최소 간격 미달)");
-        //     return;
+        // log.debug("2분 평균 데이터 집계 스킵 (최소 간격 미달)");
+        // return;
         // }
 
         log.info("⏳ 2분 평균 데이터 저장 시작...");
         try {
             String fluxQuery = String.format("""
                     from(bucket: "%s")
-                      |> range(start: -1h)
+                      |> range(start: -15m)
                       |> filter(fn: (r) => r._measurement == "sensor_data")
                       |> filter(fn: (r) => r._field == "temperature" or r._field == "humidity")
                       |> group(columns: ["device", "host", "_field"])
@@ -85,11 +90,17 @@ public class InfluxDBTaskService {
                     """,
                     SOURCE_BUCKET, AGG_BUCKET_2MIN, ORG);
 
+            // 집계 전 데이터 확인
+
             executeFluxQuery(fluxQuery);
             // updateLastExecutionTime(taskId);
+            // 집계 후 데이터 확인
 
             // ✅ 2분 평균 저장 후 `sensor_data`에서 해당 데이터 삭제
+            // 원본 데이터는 집계 완료 후에만 삭제
+
             deleteOldData(SOURCE_BUCKET, "sensor_data");
+
         } catch (Exception e) {
             log.error("2분 평균 데이터 집계 실패: {}", e.getMessage(), e);
         }
@@ -98,19 +109,23 @@ public class InfluxDBTaskService {
     /**
      * ✅ 6분마다 실행 → `ydata_2min_avg`에서 최근 4분 데이터의 평균을 `ydata_4min_avg`에 저장
      */
-    @Scheduled(fixedRate = 303000, initialDelay = 303000)
+    // @Scheduled(fixedRate = 23 * 60 * 60 * 1000 + 30 * 60 * 1000, initialDelay =
+    // 303000)
+    // @Scheduled(cron = "0 0 23 * * *", zone = "Asia/Seoul")
+    // @Scheduled(fixedRate = 303000, initialDelay = 303000)
+    @Scheduled(fixedRate = 240000)
     public void aggregateDataTo4Min() {
         // String taskId = "4min";
         // if (!canExecuteTask(taskId)) {
-        //     log.debug("4분 평균 데이터 집계 스킵 (최소 간격 미달)");
-        //     return;
+        // log.debug("4분 평균 데이터 집계 스킵 (최소 간격 미달)");
+        // return;
         // }
 
         log.info("⏳ 4분 평균 데이터 저장 시작...");
         try {
             String fluxQuery = String.format("""
                                 from(bucket: "%s")
-                      |> range(start: -1h)
+                      |> range(start: -15m)
                       |> filter(fn: (r) => r._measurement == "sensor_data_avg")
                       |> filter(fn: (r) => r._field == "temperature" or r._field == "humidity")
                       |> group(columns: ["device", "host", "_field"])
@@ -133,8 +148,11 @@ public class InfluxDBTaskService {
 
             executeFluxQuery(fluxQuery);
             // updateLastExecutionTime(taskId);
+
             // ✅ 4분 평균 저장 후 `ydata_2min_avg`에서 해당 데이터 삭제
+
             deleteOldData(AGG_BUCKET_2MIN, "sensor_data_avg");
+
         } catch (Exception e) {
             log.error("4분 평균 데이터 집계 실패: {}", e.getMessage(), e);
         }
@@ -182,7 +200,7 @@ public class InfluxDBTaskService {
                 String orgId = influxDBClient.getOrganizationsApi().findOrganizations().get(0).getId();
 
                 // ✅ Retention 정책 설정 (30일 = 30 * 24 * 60 * 60 초)
-                long retentionSeconds = 30 * 24 * 60 * 60L; // 30일
+                long retentionSeconds = (7 * 24 * 60 * 60L);// 30일
                 BucketRetentionRules retentionRule = new BucketRetentionRules();
                 retentionRule.setShardGroupDurationSeconds(retentionSeconds);
                 // ✅ 수정된 부분
@@ -206,35 +224,138 @@ public class InfluxDBTaskService {
     }
 
     // private boolean canExecuteTask(String taskId) {
-    //     long currentTime = System.currentTimeMillis();
-    //     Long lastExecution = lastAggregationTime.get(taskId);
-    //     return lastExecution == null || (currentTime - lastExecution) >= MIN_INTERVAL;
+    // long currentTime = System.currentTimeMillis();
+    // Long lastExecution = lastAggregationTime.get(taskId);
+    // return lastExecution == null || (currentTime - lastExecution) >=
+    // MIN_INTERVAL;
     // }
 
     // private void updateLastExecutionTime(String taskId) {
-    //     lastAggregationTime.put(taskId, System.currentTimeMillis());
+    // lastAggregationTime.put(taskId, System.currentTimeMillis());
     // }
 
     /**
      * ✅ 특정 버킷에서 특정 measurement(예: sensor_data)의 데이터를 삭제하는 메서드
      */
+    // private void deleteOldData(String bucketName, String measurement) {
+    // try {
+    // String fluxQuery = String.format("""
+    // from(bucket: "%s")
+    // |> range(start: -8m)
+    // |> filter(fn: (r) => r._measurement == "%s")
+    // |> drop(columns: ["_measurement"]) // measurement 삭제 후 버킷에서 제거
+    // """, bucketName, measurement);
+
+    // QueryApi queryApi = influxDBClient.getQueryApi();
+    // queryApi.query(fluxQuery, ORG);
+
+    // log.info("✅ {} 버킷에서 {} measurement 데이터 삭제 완료!", bucketName, measurement);
+    // } catch (Exception e) {
+    // log.error("❌ {} 버킷에서 {} 데이터 삭제 실패: {}", bucketName, measurement,
+    // e.getMessage(), e);
+    // }
+    // }
+
+    // private void deleteOldData(String bucketName, String measurement) {
+    // try {
+    // DeleteApi deleteApi = influxDBClient.getDeleteApi();
+    // String predicate = String.format("_measurement=\"%s\"", measurement);
+    // deleteApi.delete(
+    // OffsetDateTime.now().minusMinutes(8), // 시작 시간 (8분 전)
+    // OffsetDateTime.now(), // 현재 시간
+    // predicate,
+    // bucketName,
+    // ORG);
+    // log.info("✅ {} 버킷에서 {} measurement 데이터 삭제 완료!", bucketName, measurement);
+    // } catch (Exception e) {
+    // log.error("❌ {} 버킷에서 {} 데이터 삭제 실패: {}", bucketName, measurement,
+    // e.getMessage(), e);
+    // }
+    // }
+
     private void deleteOldData(String bucketName, String measurement) {
         try {
-            String fluxQuery = String.format("""
+            // 삭제 전 데이터 확인
+            String checkQuery = String.format("""
                     from(bucket: "%s")
-                      |> range(start: -1h)
+                      |> range(start: -10m)
                       |> filter(fn: (r) => r._measurement == "%s")
-                      |> drop(columns: ["_measurement"]) // measurement 삭제 후 버킷에서 제거
                     """, bucketName, measurement);
 
             QueryApi queryApi = influxDBClient.getQueryApi();
-            queryApi.query(fluxQuery, ORG);
+            List<FluxTable> beforeDelete = queryApi.query(checkQuery, ORG);
+            log.info("삭제 전 데이터 수: {}", beforeDelete.size());
 
-            log.info("✅ {} 버킷에서 {} measurement 데이터 삭제 완료!", bucketName, measurement);
+            // 데이터 삭제 실행
+            DeleteApi deleteApi = influxDBClient.getDeleteApi();
+            String predicate = String.format("_measurement=\"%s\"", measurement);
+
+            // SOURCE_BUCKET인 경우 (원본 데이터)
+            if (bucketName.equals(SOURCE_BUCKET)) {
+                deleteApi.delete(
+                        OffsetDateTime.now().minusMinutes(4), // 4분 전 데이터부터
+                        OffsetDateTime.now().minusMinutes(2), // 2분 전 데이터까지
+                        predicate,
+                        bucketName,
+                        ORG);
+            }
+            // AGG_BUCKET_2MIN인 경우 (2분 평균 데이터)
+            else if (bucketName.equals(AGG_BUCKET_2MIN)) {
+                deleteApi.delete(
+                        OffsetDateTime.now().minusMinutes(8), // 8분 전 데이터부터
+                        OffsetDateTime.now().minusMinutes(4), // 4분 전 데이터까지
+                        predicate,
+                        bucketName,
+                        ORG);
+            }
+
+            // 삭제 후 데이터 확인
+            List<FluxTable> afterDelete = queryApi.query(checkQuery, ORG);
+            log.info("삭제 후 데이터 수: {}", afterDelete.size());
+            log.info("✅ {} 버킷에서 {} measurement 데이터 삭제 완료! ({} -> {} 개)",
+                    bucketName, measurement, beforeDelete.size(), afterDelete.size());
+
         } catch (Exception e) {
             log.error("❌ {} 버킷에서 {} 데이터 삭제 실패: {}", bucketName, measurement, e.getMessage(), e);
         }
     }
+
+    // private void deleteOldData(String bucketName, String measurement) {
+    // try {
+    // // 삭제 전 데이터 확인
+    // String checkQuery = String.format("""
+    // from(bucket: "%s")
+    // |> range(start: -8m)
+    // |> filter(fn: (r) => r._measurement == "%s")
+    // """, bucketName, measurement);
+
+    // QueryApi queryApi = influxDBClient.getQueryApi();
+    // List<FluxTable> beforeDelete = queryApi.query(checkQuery, ORG);
+    // log.info("삭제 전 데이터 수: {}", beforeDelete.size());
+
+    // // DeleteApi를 사용한 데이터 삭제
+    // DeleteApi deleteApi = influxDBClient.getDeleteApi();
+
+    // // 8분 전부터 현재까지의 데이터 삭제
+    // String predicate = String.format("_measurement=\"%s\"", measurement);
+    // deleteApi.delete(
+    // OffsetDateTime.now().minusMinutes(8),
+    // OffsetDateTime.now(),
+    // predicate,
+    // bucketName,
+    // ORG
+    // );
+
+    // // 삭제 후 데이터 확인
+    // List<FluxTable> afterDelete = queryApi.query(checkQuery, ORG);
+    // log.info("삭제 후 데이터 수: {}", afterDelete.size());
+
+    // log.info("✅ {} 버킷에서 {} measurement 데이터 삭제 완료!", bucketName, measurement);
+    // } catch (Exception e) {
+    // log.error("❌ {} 버킷에서 {} 데이터 삭제 실패: {}", bucketName, measurement,
+    // e.getMessage(), e);
+    // }
+    // }
 
     // public void startScheduledTasks() {
     // try {
