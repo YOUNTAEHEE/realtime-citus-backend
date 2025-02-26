@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.yth.realtime.dto.ModbusDevice;
+import com.yth.realtime.dto.SettingsDTO;
 import com.yth.realtime.service.ModbusService;
 
 import lombok.RequiredArgsConstructor;
@@ -21,12 +22,12 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/modbus")
 @RequiredArgsConstructor
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
+@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:3001" })
 
 public class ModbusController {
     private final ModbusService modbusService;
     private final WebSocketHandler webSocketHandler;
-    
+
     @PostMapping("/device")
     public ResponseEntity<?> addDevice(@RequestBody ModbusDevice device) {
         try {
@@ -34,36 +35,35 @@ public class ModbusController {
                 // 장치 추가 성공하면 WebSocket 핸들러에 알림
                 webSocketHandler.addDeviceToSession(device);
                 return ResponseEntity.ok().body(Map.of(
-                    "status", "success",
-                    "deviceId", device.getDeviceId()
-                ));
+                        "status", "success",
+                        "deviceId", device.getDeviceId()));
             }
-            return ResponseEntity.badRequest().body(Map.of("error", "장치 연결 실패"));
+            return ResponseEntity.badRequest().body(Map.of("message", "장치 연결 실패"));
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.internalServerError().body(Map.of("message", e.getMessage()));
         }
     }
 
     @DeleteMapping("/device/{deviceId}")
     public ResponseEntity<?> deleteDevice(@PathVariable String deviceId) {
         try {
-            if(modbusService.deleteDevice(deviceId)) {
+            if (modbusService.deleteDevice(deviceId)) {
                 return ResponseEntity.ok().body(Map.of("status", "success"));
             } else {
-                return ResponseEntity.badRequest().body(Map.of("error", "장치 삭제 실패"));
+                return ResponseEntity.badRequest().body(Map.of("message", "장치 삭제 실패"));
             }
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
     }
 
     @GetMapping("/device/list")
     public ResponseEntity<?> deviceList() {
-        try{
+        try {
             List<ModbusDevice> deviceList = modbusService.deviceList();
             return ResponseEntity.ok().body(Map.of("devices", deviceList));
-        }catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
     }
 
@@ -71,5 +71,21 @@ public class ModbusController {
     public ResponseEntity<?> checkDevice(@PathVariable String deviceId) {
         boolean exists = modbusService.deviceExists(deviceId);
         return exists ? ResponseEntity.ok().build() : ResponseEntity.notFound().build();
+    }
+
+    @PostMapping("/settings")
+    public ResponseEntity<?> saveSettings(@RequestBody SettingsDTO settings) {
+        try {
+
+            modbusService.saveSettings(settings);
+            return ResponseEntity.ok().body(Map.of("status", "success"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/settings")
+    public ResponseEntity<?> getSettings() {
+        return ResponseEntity.ok().body(modbusService.getSettings());
     }
 }

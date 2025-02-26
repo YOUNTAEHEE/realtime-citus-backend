@@ -28,8 +28,8 @@ public class InfluxDBTaskService {
 
     // InfluxDB 버킷 정의
     private static final String SOURCE_BUCKET = "ydata"; // 원본 데이터 버킷
-    private static final String AGG_BUCKET_2MIN = "ydata_2min_avg"; // 2분 평균 버킷
-    private static final String AGG_BUCKET_4MIN = "ydata_4min_avg"; // 4분 평균 버킷
+    private static final String AGG_BUCKET_15MIN = "ydata_15min_avg"; // 15분 평균 버킷
+    private static final String AGG_BUCKET_1HOUR = "ydata_1hour_avg"; // 1시간 평균 버킷
     private static final String ORG = "youn";
     private static final String MEASUREMENT_NAME = "sensor_data"; // 측정값 이름
 
@@ -48,113 +48,116 @@ public class InfluxDBTaskService {
     }
 
     private void initializeBuckets() {
-        List.of(SOURCE_BUCKET, AGG_BUCKET_2MIN, AGG_BUCKET_4MIN).forEach(this::createBucketIfNotExists);
+        List.of(SOURCE_BUCKET, AGG_BUCKET_15MIN, AGG_BUCKET_1HOUR).forEach(this::createBucketIfNotExists);
     }
 
-    /**
-     * ✅ 3분마다 실행 → `ydata`에서 최근 2분 데이터의 평균을 `ydata_2min_avg`에 저장
-     */
-    // @Scheduled(fixedRate = 23 * 60 * 60 * 1000, initialDelay = 61000)
-    // @Scheduled(cron = "0 0 22 * * *", zone = "Asia/Seoul")
-    // @Scheduled(fixedRate = 210000, initialDelay = 61000)
-    @Scheduled(fixedRate = 120000)
-    public void aggregateDataTo2Min() {
-        // String taskId = "2min";
-        // if (!canExecuteTask(taskId)) {
-        // log.debug("2분 평균 데이터 집계 스킵 (최소 간격 미달)");
-        // return;
-        // }
-
-        log.info("⏳ 2분 평균 데이터 저장 시작...");
+    // 7일 전 원본 데이터 삭제 스케줄러
+    @Scheduled(cron = "0 0 0 * * *") // 매일 자정에 실행
+    public void deleteOldSensorData() {
+        log.info("⏳ 7일 이전 원본 데이터 삭제 검사 시작...");
         try {
-            String fluxQuery = String.format("""
+            DeleteApi deleteApi = influxDBClient.getDeleteApi();
+
+            // 삭제 전 데이터 확인
+            String checkQuery = String.format("""
                     from(bucket: "%s")
-                      |> range(start: -15m)
+                      |> range(start: -8d)
                       |> filter(fn: (r) => r._measurement == "sensor_data")
-                      |> filter(fn: (r) => r._field == "temperature" or r._field == "humidity")
-                      |> group(columns: ["device", "host", "_field"])
-                       |> sort(columns: ["_time"])  // 시간순 오름차순 정렬
-                      |> aggregateWindow(
-                            every: 2m,
-                            fn: mean,
-                            createEmpty: true
-                        )
-                      |> duplicate(column: "_stop", as: "_time")  // 시간 컬럼 복제
-                      |> group()
-                      |> set(key: "_measurement", value: "sensor_data_avg")
-                      |> drop(columns: ["_start", "_stop"])  // 불필요한 시간 컬럼 제거
-                      |> to(
-                          bucket: "%s",
-                          org: "%s"
-                        )
-                    """,
-                    SOURCE_BUCKET, AGG_BUCKET_2MIN, ORG);
+                    """, SOURCE_BUCKET);
 
-            // 집계 전 데이터 확인
+            QueryApi queryApi = influxDBClient.getQueryApi();
+            List<FluxTable> beforeDelete = queryApi.query(checkQuery, ORG);
+            log.info("삭제 전 7일 이전 데이터 수: {}", beforeDelete.size());
 
-            executeFluxQuery(fluxQuery);
-            // updateLastExecutionTime(taskId);
-            // 집계 후 데이터 확인
+            // 7일 이전 데이터만 삭제
+            String predicate = "_measurement=\"sensor_data\"";
+            deleteApi.delete(
+                    OffsetDateTime.now().minusDays(7), // 7일 전
+                    OffsetDateTime.now().minusDays(6), // 6일 전
+                    predicate,
+                    SOURCE_BUCKET,
+                    ORG);
 
-            // ✅ 2분 평균 저장 후 `sensor_data`에서 해당 데이터 삭제
-            // 원본 데이터는 집계 완료 후에만 삭제
-
-            deleteOldData(SOURCE_BUCKET, "sensor_data");
+            // 삭제 후 데이터 확인
+            List<FluxTable> afterDelete = queryApi.query(checkQuery, ORG);
+            log.info("삭제 후 7일 이전 데이터 수: {}", afterDelete.size());
+            log.info("✅ 7일 이전 원본 데이터 삭제 완료! ({} -> {} 개)",
+                    beforeDelete.size(), afterDelete.size());
 
         } catch (Exception e) {
-            log.error("2분 평균 데이터 집계 실패: {}", e.getMessage(), e);
+            log.error("❌ 7일 이전 원본 데이터 삭제 실패: {}", e.getMessage(), e);
         }
     }
 
     /**
-     * ✅ 6분마다 실행 → `ydata_2min_avg`에서 최근 4분 데이터의 평균을 `ydata_4min_avg`에 저장
+     * ✅ 15분 평균 데이터 집계
      */
-    // @Scheduled(fixedRate = 23 * 60 * 60 * 1000 + 30 * 60 * 1000, initialDelay =
-    // 303000)
-    // @Scheduled(cron = "0 0 23 * * *", zone = "Asia/Seoul")
-    // @Scheduled(fixedRate = 303000, initialDelay = 303000)
-    @Scheduled(fixedRate = 240000)
-    public void aggregateDataTo4Min() {
-        // String taskId = "4min";
-        // if (!canExecuteTask(taskId)) {
-        // log.debug("4분 평균 데이터 집계 스킵 (최소 간격 미달)");
-        // return;
-        // }
-
-        log.info("⏳ 4분 평균 데이터 저장 시작...");
+    @Scheduled(fixedRate = 900000) // 15분 = 15 * 60 * 1000 밀리초
+    public void aggregateDataTo15Min() {
+        log.info("⏳ 15분 평균 데이터 저장 시작...");
         try {
             String fluxQuery = String.format("""
-                                from(bucket: "%s")
-                      |> range(start: -15m)
-                      |> filter(fn: (r) => r._measurement == "sensor_data_avg")
+                    from(bucket: "%s")
+                      |> range(start: -30m)
+                      |> filter(fn: (r) => r._measurement == "sensor_data")
                       |> filter(fn: (r) => r._field == "temperature" or r._field == "humidity")
                       |> group(columns: ["device", "host", "_field"])
-                       |> sort(columns: ["_time"])  // 시간순 오름차순 정렬
+                       |> sort(columns: ["_time"])
                       |> aggregateWindow(
-                            every: 4m,
+                            every: 15m,
                             fn: mean,
                             createEmpty: true
                         )
-                      |> duplicate(column: "_stop", as: "_time")  // 시간 컬럼 복제
+                      |> duplicate(column: "_stop", as: "_time")
                       |> group()
-                      |> set(key: "_measurement", value: "sensor_data_4min_avg")
-                      |> drop(columns: ["_start", "_stop"])  // 불필요한 시간 컬럼 제거
+                      |> set(key: "_measurement", value: "sensor_data_15min_avg")
+                      |> drop(columns: ["_start", "_stop"])
                       |> to(
                           bucket: "%s",
                           org: "%s"
                         )
-                    """,
-                    AGG_BUCKET_2MIN, AGG_BUCKET_4MIN, ORG);
+                    """, SOURCE_BUCKET, AGG_BUCKET_15MIN, ORG);
 
             executeFluxQuery(fluxQuery);
-            // updateLastExecutionTime(taskId);
-
-            // ✅ 4분 평균 저장 후 `ydata_2min_avg`에서 해당 데이터 삭제
-
-            deleteOldData(AGG_BUCKET_2MIN, "sensor_data_avg");
-
+            // deleteOldData(SOURCE_BUCKET, "sensor_data");
         } catch (Exception e) {
-            log.error("4분 평균 데이터 집계 실패: {}", e.getMessage(), e);
+            log.error("15분 평균 데이터 집계 실패: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * ✅ 1시간 평균 데이터 집계
+     */
+    @Scheduled(fixedRate = 3600000) // 1시간 = 60 * 60 * 1000 밀리초
+    public void aggregateDataTo1Hour() {
+        log.info("⏳ 1시간 평균 데이터 저장 시작...");
+        try {
+            String fluxQuery = String.format("""
+                    from(bucket: "%s")
+                      |> range(start: -2h)
+                      |> filter(fn: (r) => r._measurement == "sensor_data_15min_avg")
+                      |> filter(fn: (r) => r._field == "temperature" or r._field == "humidity")
+                      |> group(columns: ["device", "host", "_field"])
+                       |> sort(columns: ["_time"])
+                      |> aggregateWindow(
+                            every: 1h,
+                            fn: mean,
+                            createEmpty: true
+                        )
+                      |> duplicate(column: "_stop", as: "_time")
+                      |> group()
+                      |> set(key: "_measurement", value: "sensor_data_1hour_avg")
+                      |> drop(columns: ["_start", "_stop"])
+                      |> to(
+                          bucket: "%s",
+                          org: "%s"
+                        )
+                    """, AGG_BUCKET_15MIN, AGG_BUCKET_1HOUR, ORG);
+
+            executeFluxQuery(fluxQuery);
+            // deleteOldData(AGG_BUCKET_15MIN, "sensor_data_15min_avg");
+        } catch (Exception e) {
+            log.error("1시간 평균 데이터 집계 실패: {}", e.getMessage(), e);
         }
     }
 
@@ -223,153 +226,36 @@ public class InfluxDBTaskService {
         }
     }
 
-    // private boolean canExecuteTask(String taskId) {
-    // long currentTime = System.currentTimeMillis();
-    // Long lastExecution = lastAggregationTime.get(taskId);
-    // return lastExecution == null || (currentTime - lastExecution) >=
-    // MIN_INTERVAL;
-    // }
-
-    // private void updateLastExecutionTime(String taskId) {
-    // lastAggregationTime.put(taskId, System.currentTimeMillis());
-    // }
-
     /**
-     * ✅ 특정 버킷에서 특정 measurement(예: sensor_data)의 데이터를 삭제하는 메서드
+     * ✅ 데이터 삭제 로직 수정
      */
-    // private void deleteOldData(String bucketName, String measurement) {
-    // try {
-    // String fluxQuery = String.format("""
-    // from(bucket: "%s")
-    // |> range(start: -8m)
-    // |> filter(fn: (r) => r._measurement == "%s")
-    // |> drop(columns: ["_measurement"]) // measurement 삭제 후 버킷에서 제거
-    // """, bucketName, measurement);
-
-    // QueryApi queryApi = influxDBClient.getQueryApi();
-    // queryApi.query(fluxQuery, ORG);
-
-    // log.info("✅ {} 버킷에서 {} measurement 데이터 삭제 완료!", bucketName, measurement);
-    // } catch (Exception e) {
-    // log.error("❌ {} 버킷에서 {} 데이터 삭제 실패: {}", bucketName, measurement,
-    // e.getMessage(), e);
-    // }
-    // }
-
-    // private void deleteOldData(String bucketName, String measurement) {
-    // try {
-    // DeleteApi deleteApi = influxDBClient.getDeleteApi();
-    // String predicate = String.format("_measurement=\"%s\"", measurement);
-    // deleteApi.delete(
-    // OffsetDateTime.now().minusMinutes(8), // 시작 시간 (8분 전)
-    // OffsetDateTime.now(), // 현재 시간
-    // predicate,
-    // bucketName,
-    // ORG);
-    // log.info("✅ {} 버킷에서 {} measurement 데이터 삭제 완료!", bucketName, measurement);
-    // } catch (Exception e) {
-    // log.error("❌ {} 버킷에서 {} 데이터 삭제 실패: {}", bucketName, measurement,
-    // e.getMessage(), e);
-    // }
-    // }
-
     private void deleteOldData(String bucketName, String measurement) {
         try {
-            // 삭제 전 데이터 확인
-            String checkQuery = String.format("""
-                    from(bucket: "%s")
-                      |> range(start: -10m)
-                      |> filter(fn: (r) => r._measurement == "%s")
-                    """, bucketName, measurement);
-
-            QueryApi queryApi = influxDBClient.getQueryApi();
-            List<FluxTable> beforeDelete = queryApi.query(checkQuery, ORG);
-            log.info("삭제 전 데이터 수: {}", beforeDelete.size());
-
-            // 데이터 삭제 실행
             DeleteApi deleteApi = influxDBClient.getDeleteApi();
             String predicate = String.format("_measurement=\"%s\"", measurement);
 
             // SOURCE_BUCKET인 경우 (원본 데이터)
             if (bucketName.equals(SOURCE_BUCKET)) {
                 deleteApi.delete(
-                        OffsetDateTime.now().minusMinutes(4), // 4분 전 데이터부터
-                        OffsetDateTime.now().minusMinutes(2), // 2분 전 데이터까지
+                        OffsetDateTime.now().minusMinutes(30), // 30분 전 데이터부터
+                        OffsetDateTime.now().minusMinutes(15), // 15분 전 데이터까지
                         predicate,
                         bucketName,
                         ORG);
             }
-            // AGG_BUCKET_2MIN인 경우 (2분 평균 데이터)
-            else if (bucketName.equals(AGG_BUCKET_2MIN)) {
+            // AGG_BUCKET_15MIN인 경우 (15분 평균 데이터)
+            else if (bucketName.equals(AGG_BUCKET_15MIN)) {
                 deleteApi.delete(
-                        OffsetDateTime.now().minusMinutes(8), // 8분 전 데이터부터
-                        OffsetDateTime.now().minusMinutes(4), // 4분 전 데이터까지
+                        OffsetDateTime.now().minusHours(2), // 2시간 전 데이터부터
+                        OffsetDateTime.now().minusHours(1), // 1시간 전 데이터까지
                         predicate,
                         bucketName,
                         ORG);
             }
 
-            // 삭제 후 데이터 확인
-            List<FluxTable> afterDelete = queryApi.query(checkQuery, ORG);
-            log.info("삭제 후 데이터 수: {}", afterDelete.size());
-            log.info("✅ {} 버킷에서 {} measurement 데이터 삭제 완료! ({} -> {} 개)",
-                    bucketName, measurement, beforeDelete.size(), afterDelete.size());
-
+            log.info("✅ {} 버킷에서 {} measurement 데이터 삭제 완료!", bucketName, measurement);
         } catch (Exception e) {
             log.error("❌ {} 버킷에서 {} 데이터 삭제 실패: {}", bucketName, measurement, e.getMessage(), e);
         }
     }
-
-    // private void deleteOldData(String bucketName, String measurement) {
-    // try {
-    // // 삭제 전 데이터 확인
-    // String checkQuery = String.format("""
-    // from(bucket: "%s")
-    // |> range(start: -8m)
-    // |> filter(fn: (r) => r._measurement == "%s")
-    // """, bucketName, measurement);
-
-    // QueryApi queryApi = influxDBClient.getQueryApi();
-    // List<FluxTable> beforeDelete = queryApi.query(checkQuery, ORG);
-    // log.info("삭제 전 데이터 수: {}", beforeDelete.size());
-
-    // // DeleteApi를 사용한 데이터 삭제
-    // DeleteApi deleteApi = influxDBClient.getDeleteApi();
-
-    // // 8분 전부터 현재까지의 데이터 삭제
-    // String predicate = String.format("_measurement=\"%s\"", measurement);
-    // deleteApi.delete(
-    // OffsetDateTime.now().minusMinutes(8),
-    // OffsetDateTime.now(),
-    // predicate,
-    // bucketName,
-    // ORG
-    // );
-
-    // // 삭제 후 데이터 확인
-    // List<FluxTable> afterDelete = queryApi.query(checkQuery, ORG);
-    // log.info("삭제 후 데이터 수: {}", afterDelete.size());
-
-    // log.info("✅ {} 버킷에서 {} measurement 데이터 삭제 완료!", bucketName, measurement);
-    // } catch (Exception e) {
-    // log.error("❌ {} 버킷에서 {} 데이터 삭제 실패: {}", bucketName, measurement,
-    // e.getMessage(), e);
-    // }
-    // }
-
-    // public void startScheduledTasks() {
-    // try {
-    // log.info("스케줄러 작업 시작");
-    // initializeBuckets();
-
-    // // 초기 실행 시에도 중복 체크
-    // aggregateDataTo2Min();
-    // Thread.sleep(300000);
-    // aggregateDataTo4Min();
-
-    // log.info("✅ 스케줄러 작업 초기화 완료");
-    // } catch (Exception e) {
-    // log.error("스케줄러 작업 시작 중 오류 발생: {}", e.getMessage(), e);
-    // }
-    // }
 }
