@@ -201,34 +201,6 @@ public class ModbusService {
         return modbusMasters.containsKey(deviceId);
     }
 
-    // public void saveSettings(SettingsDTO settings) {
-    // // 온도 설정 저장/업데이트
-    // Settings temperatureSettings = settingsRepository.findByType("temperature")
-    // .orElse(new Settings()); // 기존 설정이 없으면 새로 생성
-
-    // temperatureSettings.setType("temperature");
-    // temperatureSettings.setWarningLow(settings.getTemperature().getWarningLow());
-    // temperatureSettings.setDangerLow(settings.getTemperature().getDangerLow());
-    // temperatureSettings.setNormal(settings.getTemperature().getNormal());
-    // temperatureSettings.setWarningHigh(settings.getTemperature().getWarningHigh());
-    // temperatureSettings.setDangerHigh(settings.getTemperature().getDangerHigh());
-
-    // // 습도 설정 저장/업데이트
-    // Settings humiditySettings = settingsRepository.findByType("humidity")
-    // .orElse(new Settings()); // 기존 설정이 없으면 새로 생성
-
-    // humiditySettings.setType("humidity");
-    // humiditySettings.setWarningLow(settings.getHumidity().getWarningLow());
-    // humiditySettings.setDangerLow(settings.getHumidity().getDangerLow());
-    // humiditySettings.setNormal(settings.getHumidity().getNormal());
-    // humiditySettings.setWarningHigh(settings.getHumidity().getWarningHigh());
-    // humiditySettings.setDangerHigh(settings.getHumidity().getDangerHigh());
-
-    // // 저장
-    // settingsRepository.save(temperatureSettings);
-    // settingsRepository.save(humiditySettings);
-    // }
-
     public SettingsDTO getSettings() {
         // 온도 설정 조회
         Settings temperatureSettings = settingsRepository.getByType("temperature");
