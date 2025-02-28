@@ -200,7 +200,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
             } catch (Exception e) {
                 log.error("데이터 전송 실패: {}", e.getMessage());
             }
-        }, 0, 5, TimeUnit.SECONDS);
+        }, 0, 1, TimeUnit.SECONDS); // 1초마다 데이터 전송
 
         // 스케줄러 저장
         deviceSchedulers.put(device.getDeviceId(), future);

@@ -34,7 +34,7 @@ public class ModbusService {
     private final List<ModbusDevice> registeredDevices = new CopyOnWriteArrayList<>();
     private final Map<String, ModbusTCPMaster> modbusMasters = new ConcurrentHashMap<>();
     private final Map<String, Long> lastDataSaveTime = new ConcurrentHashMap<>();
-    private static final long SAVE_INTERVAL = 5; // 5초로 수정
+    private static final long SAVE_INTERVAL = 1; // 5초로 수정
     private final ModbusDeviceRepository modbusDeviceRepository;
     private final SettingsRepository settingsRepository;
 
@@ -98,7 +98,7 @@ public class ModbusService {
             Long lastSave = lastDataSaveTime.get(device.getDeviceId());
 
             // 마지막 저장으로부터 5초가 지났거나 처음 저장하는 경우에만 저장
-            if (lastSave == null || currentTime - lastSave >= SAVE_INTERVAL) {
+            if (lastSave == null || (currentTime - lastSave) >= SAVE_INTERVAL){
                 double temperature = data[0] / 10.0;
                 double humidity = data[1] / 10.0;
 
