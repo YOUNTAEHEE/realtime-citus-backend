@@ -10,4 +10,5 @@ import com.yth.realtime.entity.Settings;
 @Repository
 public interface SettingsRepository extends MongoRepository<Settings, String> {
     Optional<Settings> findByType(String type);
+    Settings getByType(String type);
 }

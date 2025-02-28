@@ -7,6 +7,7 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
 import com.yth.realtime.entity.WeatherStation;
@@ -14,9 +15,11 @@ import com.yth.realtime.repository.WeatherStationRepository;
 
 import io.github.cdimascio.dotenv.Dotenv;
 import lombok.extern.slf4j.Slf4j;
+// @RequiredArgsConstructor
+
 @Slf4j
 @Service
-// @RequiredArgsConstructor
+@Transactional
 public class WeatherStationService {
     private final Dotenv dotenv;
     private final String apiKey;

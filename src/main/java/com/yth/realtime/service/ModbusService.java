@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.ghgande.j2mod.modbus.facade.ModbusTCPMaster;
 import com.ghgande.j2mod.modbus.procimg.Register;
@@ -25,6 +26,7 @@ import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
+@Transactional
 @Slf4j
 public class ModbusService {
     private static final Logger log = LoggerFactory.getLogger(ModbusService.class);
@@ -199,36 +201,164 @@ public class ModbusService {
         return modbusMasters.containsKey(deviceId);
     }
 
-    public void saveSettings(SettingsDTO settings) {
-        // 온도 설정 저장/업데이트
-        Settings temperatureSettings = settingsRepository.findByType("temperature")
-                .orElse(new Settings()); // 기존 설정이 없으면 새로 생성
+    // public void saveSettings(SettingsDTO settings) {
+    // // 온도 설정 저장/업데이트
+    // Settings temperatureSettings = settingsRepository.findByType("temperature")
+    // .orElse(new Settings()); // 기존 설정이 없으면 새로 생성
 
-        temperatureSettings.setType("temperature");
-        temperatureSettings.setWarningLow(settings.getTemperature().getWarningLow());
-        temperatureSettings.setDangerLow(settings.getTemperature().getDangerLow());
-        temperatureSettings.setNormal(settings.getTemperature().getNormal());
-        temperatureSettings.setWarningHigh(settings.getTemperature().getWarningHigh());
-        temperatureSettings.setDangerHigh(settings.getTemperature().getDangerHigh());
+    // temperatureSettings.setType("temperature");
+    // temperatureSettings.setWarningLow(settings.getTemperature().getWarningLow());
+    // temperatureSettings.setDangerLow(settings.getTemperature().getDangerLow());
+    // temperatureSettings.setNormal(settings.getTemperature().getNormal());
+    // temperatureSettings.setWarningHigh(settings.getTemperature().getWarningHigh());
+    // temperatureSettings.setDangerHigh(settings.getTemperature().getDangerHigh());
 
-        // 습도 설정 저장/업데이트
-        Settings humiditySettings = settingsRepository.findByType("humidity")
-                .orElse(new Settings()); // 기존 설정이 없으면 새로 생성
+    // // 습도 설정 저장/업데이트
+    // Settings humiditySettings = settingsRepository.findByType("humidity")
+    // .orElse(new Settings()); // 기존 설정이 없으면 새로 생성
 
-        humiditySettings.setType("humidity");
-        humiditySettings.setWarningLow(settings.getHumidity().getWarningLow());
-        humiditySettings.setDangerLow(settings.getHumidity().getDangerLow());
-        humiditySettings.setNormal(settings.getHumidity().getNormal());
-        humiditySettings.setWarningHigh(settings.getHumidity().getWarningHigh());
-        humiditySettings.setDangerHigh(settings.getHumidity().getDangerHigh());
+    // humiditySettings.setType("humidity");
+    // humiditySettings.setWarningLow(settings.getHumidity().getWarningLow());
+    // humiditySettings.setDangerLow(settings.getHumidity().getDangerLow());
+    // humiditySettings.setNormal(settings.getHumidity().getNormal());
+    // humiditySettings.setWarningHigh(settings.getHumidity().getWarningHigh());
+    // humiditySettings.setDangerHigh(settings.getHumidity().getDangerHigh());
 
-        // 저장
+    // // 저장
+    // settingsRepository.save(temperatureSettings);
+    // settingsRepository.save(humiditySettings);
+    // }
+
+    public SettingsDTO getSettings() {
+        // 온도 설정 조회
+        Settings temperatureSettings = settingsRepository.getByType("temperature");
+        // 습도 설정 조회
+        Settings humiditySettings = settingsRepository.getByType("humidity");
+
+        // DTO 생성
+        SettingsDTO settingsDTO = new SettingsDTO();
+
+        // 온도 설정 변환
+
+        SettingsDTO.SensorSettingsDTO tempDTO = new SettingsDTO.SensorSettingsDTO();
+        tempDTO.setWarningLow(temperatureSettings.getWarningLow());
+        tempDTO.setDangerLow(temperatureSettings.getDangerLow());
+        tempDTO.setNormal(temperatureSettings.getNormal());
+        tempDTO.setWarningHigh(temperatureSettings.getWarningHigh());
+        tempDTO.setDangerHigh(temperatureSettings.getDangerHigh());
+        settingsDTO.setTemperature(tempDTO);
+        // 습도 설정 변환
+        SettingsDTO.SensorSettingsDTO humidDTO = new SettingsDTO.SensorSettingsDTO();
+        humidDTO.setWarningLow(humiditySettings.getWarningLow());
+        humidDTO.setDangerLow(humiditySettings.getDangerLow());
+        humidDTO.setNormal(humiditySettings.getNormal());
+        humidDTO.setWarningHigh(humiditySettings.getWarningHigh());
+        humidDTO.setDangerHigh(humiditySettings.getDangerHigh());
+        settingsDTO.setHumidity(humidDTO);
+        System.out.println("변환된 설정 DTO: " + settingsDTO);
+        return settingsDTO;
+    }
+
+    public void saveSettings(SettingsDTO settingsDTO) {
+        // 온도 설정 저장
+        Settings temperatureSettings = settingsRepository.getByType("temperature");
+        if (temperatureSettings == null) {
+            temperatureSettings = new Settings();
+            temperatureSettings.setType("temperature");
+        }
+
+        temperatureSettings.setWarningLow(settingsDTO.getTemperature().getWarningLow());
+        temperatureSettings.setDangerLow(settingsDTO.getTemperature().getDangerLow());
+        temperatureSettings.setNormal(settingsDTO.getTemperature().getNormal());
+        temperatureSettings.setWarningHigh(settingsDTO.getTemperature().getWarningHigh());
+        temperatureSettings.setDangerHigh(settingsDTO.getTemperature().getDangerHigh());
+
         settingsRepository.save(temperatureSettings);
+
+        // 습도 설정 저장
+        Settings humiditySettings = settingsRepository.getByType("humidity");
+        if (humiditySettings == null) {
+            humiditySettings = new Settings();
+            humiditySettings.setType("humidity");
+        }
+
+        humiditySettings.setWarningLow(settingsDTO.getHumidity().getWarningLow());
+        humiditySettings.setDangerLow(settingsDTO.getHumidity().getDangerLow());
+        humiditySettings.setNormal(settingsDTO.getHumidity().getNormal());
+        humiditySettings.setWarningHigh(settingsDTO.getHumidity().getWarningHigh());
+        humiditySettings.setDangerHigh(settingsDTO.getHumidity().getDangerHigh());
+
         settingsRepository.save(humiditySettings);
     }
 
-    public Settings getSettings() {
-        return settingsRepository.findAll().get(0);
+    public void updateDevice(ModbusDevice deviceDTO) {
+        log.info("장치 업데이트 요청: {}", deviceDTO);
+
+        // 장치 ID로 모든 장치 조회해보기
+        List<ModbusDeviceDocument> allDevices = modbusDeviceRepository.findAll();
+        log.info("현재 등록된 모든 장치: {}", allDevices);
+
+        // 기존 장치 조회
+        try {
+            ModbusDeviceDocument existingDevice = modbusDeviceRepository.findByDeviceId(deviceDTO.getDeviceId())
+                    .orElseThrow(() -> new RuntimeException("장치를 찾을 수 없습니다: " + deviceDTO.getDeviceId()));
+
+            // 장치 정보 업데이트
+            existingDevice.setName(deviceDTO.getName());
+            existingDevice.setHost(deviceDTO.getHost());
+            existingDevice.setPort(deviceDTO.getPort());
+            existingDevice.setSlaveId(deviceDTO.getSlaveId());
+            existingDevice.setStartAddress(deviceDTO.getStartAddress());
+            existingDevice.setLength(deviceDTO.getLength());
+
+            // 장치 저장
+            modbusDeviceRepository.save(existingDevice);
+            log.info("장치 업데이트 성공: {}", existingDevice);
+
+            // 기존 Modbus 연결 재설정
+            resetConnection(deviceDTO.getDeviceId());
+
+            // 등록된 장치 목록에서도 업데이트
+            for (int i = 0; i < registeredDevices.size(); i++) {
+                if (registeredDevices.get(i).getDeviceId().equals(deviceDTO.getDeviceId())) {
+                    registeredDevices.set(i, deviceDTO);
+                    break;
+                }
+            }
+
+            // 새 연결 생성 시도
+            try {
+                ModbusTCPMaster master = new ModbusTCPMaster(deviceDTO.getHost(), deviceDTO.getPort());
+                master.setTimeout(1000);
+                master.setRetries(1);
+                master.connect();
+                modbusMasters.put(deviceDTO.getDeviceId(), master);
+                log.info("장치 연결 재설정 성공: {}", deviceDTO.getDeviceId());
+            } catch (Exception e) {
+                log.error("장치 연결 재설정 실패: {} - {}", deviceDTO.getDeviceId(), e.getMessage());
+                // 연결 실패해도 업데이트는 성공으로 처리
+            }
+        } catch (Exception e) {
+            log.error("장치 업데이트 실패 상세 정보: ", e);
+            throw e;
+        }
     }
 
+    public void resetConnection(String deviceId) {
+        ModbusTCPMaster master = modbusMasters.remove(deviceId);
+        if (master != null) {
+            try {
+                master.disconnect();
+                log.info("Modbus 연결 재설정: {}", deviceId);
+            } catch (Exception e) {
+                log.error("Modbus 연결 해제 실패: {} - {}", deviceId, e.getMessage());
+            }
+        }
+    }
+
+    public ModbusDevice getDevice(String deviceId) {
+        return modbusDeviceRepository.findByDeviceId(deviceId)
+                .map(ModbusDeviceDocument::toModbusDevice)
+                .orElse(null);
+    }
 }
