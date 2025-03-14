@@ -25,8 +25,9 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/modbus")
 @RequiredArgsConstructor
-@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:3001" })
-
+// @CrossOrigin(origins = { "http://localhost:3000", "http://localhost:3001"})
+// @CrossOrigin(origins = { "http://localhost:3000", "http://localhost:3001", "https://realtime-citus-nagp.vercel.app" })
+// @CrossOrigin(origins = "*", allowCredentials = "false")
 public class ModbusController {
     private final ModbusService modbusService;
     private final WebSocketHandler webSocketHandler;

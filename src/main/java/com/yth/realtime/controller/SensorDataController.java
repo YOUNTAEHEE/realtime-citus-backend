@@ -19,7 +19,9 @@ import lombok.extern.slf4j.Slf4j;
 @RestController
 @RequestMapping("/api/sensor-data")
 @RequiredArgsConstructor
-@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:3001" })
+// @CrossOrigin(origins = { "http://localhost:3000", "http://localhost:3001"})
+// @CrossOrigin(origins = { "http://localhost:3000", "http://localhost:3001", "https://realtime-citus-nagp.vercel.app" })
+// @CrossOrigin(origins = "*", allowCredentials = "false")
 @Slf4j
 public class SensorDataController {
 

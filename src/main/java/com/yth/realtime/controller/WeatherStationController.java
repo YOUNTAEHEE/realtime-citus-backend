@@ -19,7 +19,9 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/stations")
 @RequiredArgsConstructor
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
+// @CrossOrigin(origins = { "http://localhost:3000", "http://localhost:3001"})
+// @CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001", "https://realtime-citus-nagp.vercel.app"})
+// @CrossOrigin(origins = "*", allowCredentials = "false")
 public class WeatherStationController {
     
     private final WeatherStationService weatherStationService;
