@@ -124,7 +124,6 @@ public class ShortTermForecastService {
                 Map<String, String> entry = new HashMap<>();
                 entry.put("REG_ID", values[0]); // 시간
 
-                // 기온(TA)과 풍속(WS) 데이터 위치 찾기
                 int stnIndex = -1;
                 int taIndex = -1;
                 int stIndex = -1;
@@ -147,8 +146,8 @@ public class ShortTermForecastService {
                 }
 
                 // 찾은 인덱스로 데이터 추출
-                if (stnIndex != -1 && stnIndex < values.length && 
-                values[stnIndex].equals(requestedStn)) {
+                if (stnIndex != -1 && stnIndex < values.length &&
+                        values[stnIndex].equals(requestedStn)) {
                     entry.put("STN", values[stnIndex]);
                 }
                 if (taIndex != -1 && taIndex < values.length) {
