@@ -1,6 +1,7 @@
 package com.yth.realtime.service;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -10,6 +11,7 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +21,7 @@ import com.yth.realtime.dto.ModbusDevice;
 import com.yth.realtime.dto.SettingsDTO;
 import com.yth.realtime.entity.ModbusDeviceDocument;
 import com.yth.realtime.entity.Settings;
+import com.yth.realtime.event.HistoricalDataEvent;
 import com.yth.realtime.repository.ModbusDeviceRepository;
 import com.yth.realtime.repository.SettingsRepository;
 
@@ -38,11 +41,17 @@ public class ModbusService {
     private final ModbusDeviceRepository modbusDeviceRepository;
     private final SettingsRepository settingsRepository;
 
-    public ModbusService(InfluxDBService influxDBService, ModbusDeviceRepository modbusDeviceRepository,
-            SettingsRepository settingsRepository) {
+    // ApplicationEventPublisher 추가 (이벤트 기반 통신 위해)
+    private final ApplicationEventPublisher eventPublisher;
+
+    public ModbusService(InfluxDBService influxDBService,
+            ModbusDeviceRepository modbusDeviceRepository,
+            SettingsRepository settingsRepository,
+            ApplicationEventPublisher eventPublisher) {
         this.influxDBService = influxDBService;
         this.settingsRepository = settingsRepository;
         this.modbusDeviceRepository = modbusDeviceRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -70,6 +79,9 @@ public class ModbusService {
                     modbusDeviceRepository.save(ModbusDeviceDocument.from(device));
                 }
                 log.info("장치 연결 성공: {}", device);
+
+                // 장치 등록 성공 시 24시간 이전 데이터 전송
+                sendHistoricalData(device.getDeviceId());
                 return true;
             } else {
                 throw new RuntimeException("장치 응답 없음");
@@ -77,6 +89,35 @@ public class ModbusService {
         } catch (Exception e) {
             log.error("장치 연결 실패: {} - {}", device.getDeviceId(), e.getMessage());
             return false;
+        }
+    }
+
+    /**
+     * 24시간 이전 데이터 전송 메서드
+     */
+    private void sendHistoricalData(String deviceId) {
+        try {
+            log.info("24시간 이전 데이터 로드 시작: {}", deviceId);
+
+            // InfluxDB에서 24시간 데이터 가져오기 (1440분 = 24시간)
+            List<Map<String, Object>> historicalData = influxDBService.getRecentSensorData(deviceId, 1440);
+
+            if (historicalData != null && !historicalData.isEmpty()) {
+                // 데이터가 있으면 이벤트 발행
+                Map<String, Object> message = new HashMap<>();
+                message.put("type", "history");
+                message.put("deviceId", deviceId);
+                message.put("data", historicalData);
+
+                // 이벤트 발행을 통한 WebSocketHandler와의 통신
+                eventPublisher.publishEvent(new HistoricalDataEvent(this, deviceId, message));
+
+                log.info("24시간 이전 데이터 전송 완료: {}개 데이터 포인트", historicalData.size());
+            } else {
+                log.info("24시간 이전 데이터가 없습니다: {}", deviceId);
+            }
+        } catch (Exception e) {
+            log.error("24시간 이전 데이터 전송 중 오류 발생: {}", e.getMessage(), e);
         }
     }
 
@@ -98,7 +139,7 @@ public class ModbusService {
             Long lastSave = lastDataSaveTime.get(device.getDeviceId());
 
             // 마지막 저장으로부터 5초가 지났거나 처음 저장하는 경우에만 저장
-            if (lastSave == null || (currentTime - lastSave) >= SAVE_INTERVAL){
+            if (lastSave == null || (currentTime - lastSave) >= SAVE_INTERVAL) {
                 double temperature = data[0] / 10.0;
                 double humidity = data[1] / 10.0;
 

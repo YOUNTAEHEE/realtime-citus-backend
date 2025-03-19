@@ -1,4 +1,3 @@
-
 //실시간 데이터 조회(디비는 저장만)
 // package com.yth.realtime.controller;
 
@@ -132,6 +131,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -139,6 +139,7 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yth.realtime.dto.ModbusDevice;
+import com.yth.realtime.event.HistoricalDataEvent;
 import com.yth.realtime.service.InfluxDBService;
 import com.yth.realtime.service.ModbusService;
 
@@ -196,6 +197,58 @@ public class WebSocketHandler extends TextWebSocketHandler {
         if (future != null && !future.isDone()) {
             future.cancel(false);
             log.info("장치 스케줄러 중지: {}", deviceId);
+        }
+    }
+
+    /**
+     * 특정 장치의 24시간 이전 데이터를 연결된 클라이언트들에게 전송
+     */
+    @EventListener
+    public void handleHistoricalDataEvent(HistoricalDataEvent event) {
+        try {
+            String deviceId = event.getDeviceId();
+            Map<String, Object> message = event.getData();
+
+            log.info("24시간 이전 데이터 이벤트 수신: 장치ID={}, 데이터 크기={}",
+                    deviceId, message.get("data") instanceof List ? ((List) message.get("data")).size() : "N/A");
+
+            // 현재 열린 세션 수 확인
+            log.info("현재 열린 WebSocket 세션 수: {}", sessions.size());
+
+            // 메시지를 JSON으로 변환
+            String messageJson;
+            try {
+                messageJson = objectMapper.writeValueAsString(message);
+                log.info("JSON 변환 성공, 메시지 길이: {} 바이트", messageJson.getBytes().length);
+            } catch (Exception e) {
+                log.error("JSON 변환 실패: {}", e.getMessage(), e);
+                return;
+            }
+
+            TextMessage textMessage = new TextMessage(messageJson);
+
+            int successCount = 0;
+            // 모든 세션에 데이터 전송
+            for (WebSocketSession session : sessions) {
+                if (session.isOpen()) {
+                    try {
+                        session.sendMessage(textMessage);
+                        successCount++;
+                    } catch (Exception e) {
+                        log.error("세션({})에 메시지 전송 실패: {}", session.getId(), e.getMessage());
+                    }
+                } else {
+                    log.warn("세션({})이 닫혀 있습니다. 메시지를 전송하지 않습니다.", session.getId());
+                }
+            }
+
+            if (successCount > 0) {
+                log.info("24시간 이전 데이터 전송 성공: {} (전송된 세션: {}개)", deviceId, successCount);
+            } else {
+                log.warn("24시간 이전 데이터 전송 실패: {}. 열린 세션이 없습니다.", deviceId);
+            }
+        } catch (Exception e) {
+            log.error("24시간 이전 데이터 이벤트 처리 중 오류: {}", e.getMessage(), e);
         }
     }
 

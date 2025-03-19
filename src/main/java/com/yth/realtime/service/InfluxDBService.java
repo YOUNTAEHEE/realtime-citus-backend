@@ -68,7 +68,7 @@ public class InfluxDBService {
             String query = String.format(
                     "from(bucket: \"%s\") " +
                             "|> range(start: -%dm) " +
-                            "|> filter(fn: (r) => r._measurement == \"sensor_data\" and r.device_id == \"%s\") " +
+                            "|> filter(fn: (r) => r._measurement == \"sensor_data\" and r.device == \"%s\") " +
                             "|> pivot(rowKey:[\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\") " +
                             "|> sort(columns: [\"_time\"], desc: false)",
                     bucket, minutes, deviceId);
