@@ -298,4 +298,37 @@ public class WebSocketHandler extends TextWebSocketHandler {
         // 스케줄러 저장
         deviceSchedulers.put(device.getDeviceId(), future);
     }
+
+    /**
+     * OPC UA 데이터를 모든 웹소켓 세션에 전송
+     */
+    public void sendOpcuaData(Map<String, Object> data) {
+        if (sessions.isEmpty()) {
+            log.warn("활성화된 WebSocket 세션이 없습니다");
+            return;
+        }
+
+        try {
+            String jsonData = objectMapper.writeValueAsString(data);
+            TextMessage message = new TextMessage(jsonData);
+
+            int successCount = 0;
+            for (WebSocketSession session : sessions) {
+                if (session.isOpen()) {
+                    try {
+                        session.sendMessage(message);
+                        successCount++;
+                    } catch (Exception e) {
+                        log.error("세션({})에 OPC UA 데이터 전송 실패: {}", session.getId(), e.getMessage());
+                    }
+                }
+            }
+
+            if (successCount > 0) {
+                log.debug("OPC UA 데이터 전송 성공: {}개 세션", successCount);
+            }
+        } catch (Exception e) {
+            log.error("OPC UA 데이터 JSON 변환 실패: {}", e.getMessage(), e);
+        }
+    }
 }
