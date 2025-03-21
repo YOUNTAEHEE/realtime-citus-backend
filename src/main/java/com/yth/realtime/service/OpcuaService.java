@@ -2,7 +2,6 @@ package com.yth.realtime.service;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,6 +11,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -256,10 +256,10 @@ public class OpcuaService {
      */
     private void sendLatestDataToClient() {
         try {
-            // 태그 조건 "r.system == \"PCS_System\""을 제거하여, 모든 데이터 중 최신 데이터를 조회합니다.
+            // 기존 쿼리 및 데이터 조회 부분은 유지
             String query = String.format(
                     "from(bucket: \"%s\") " +
-                            "|> range(start: -12h) " +
+                            "|> range(start: -1h) " +
                             "|> filter(fn: (r) => r._measurement == \"opcua_data\") " +
                             "|> pivot(rowKey:[\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\") " +
                             "|> sort(columns: [\"_time\"], desc: true) " +
@@ -267,110 +267,98 @@ public class OpcuaService {
                     influxDBService.getBucket());
 
             log.info("실행할 쿼리: {}", query);
-
             List<Map<String, Object>> latestResults = influxDBService.queryData(query);
             log.info("조회 결과 레코드 수: {}", latestResults.size());
 
-            if (latestResults.isEmpty()) {
-                log.warn("최신 OPC UA 데이터가 조회되지 않았습니다");
-                return;
-            }
-
-            // 첫 번째 결과 가져오기
-            Map<String, Object> latestResult = latestResults.get(0);
-            log.info("조회 결과의 키 목록: {}", latestResult.keySet());
-
-            // 시간 필드 확인 (time 또는 _time 둘 다 시도)
-            LocalDateTime timestamp = null;
-            if (latestResult.containsKey("time")) {
-                Object timeObj = latestResult.get("time");
-                log.info("time 필드 값: {} (타입: {})", timeObj,
-                        timeObj != null ? timeObj.getClass().getName() : "null");
-
-                if (timeObj instanceof LocalDateTime) {
-                    timestamp = (LocalDateTime) timeObj;
-                } else if (timeObj instanceof Instant) {
-                    timestamp = LocalDateTime.ofInstant((Instant) timeObj, ZoneId.systemDefault());
-                }
-            } else if (latestResult.containsKey("_time")) {
-                Object timeObj = latestResult.get("_time");
-                log.info("_time 필드 값: {} (타입: {})", timeObj,
-                        timeObj != null ? timeObj.getClass().getName() : "null");
-
-                if (timeObj instanceof LocalDateTime) {
-                    timestamp = (LocalDateTime) timeObj;
-                } else if (timeObj instanceof Instant) {
-                    timestamp = LocalDateTime.ofInstant((Instant) timeObj, ZoneId.systemDefault());
-                }
-            }
-
-            // 타임스탬프가 여전히 null이면 현재 시간 사용
-            if (timestamp == null) {
-                log.warn("유효한 타임스탬프를 찾을 수 없어 현재 시간을 사용합니다");
-                timestamp = LocalDateTime.now();
-            }
-
-            // 데이터 그룹화 및 웹소켓 메시지 생성
-            Map<String, Map<String, Object>> groupedData = groupInfluxData(latestResult);
+            // 웹소켓 메시지 준비
             Map<String, Object> wsMessage = new HashMap<>();
             wsMessage.put("type", "opcua");
-            wsMessage.put("timestamp", timestamp.toString());
-            wsMessage.put("data", groupedData);
+            wsMessage.put("timestamp", LocalDateTime.now().toString());
+
+            if (!latestResults.isEmpty()) {
+                // 첫 번째 결과 가져오기
+                Map<String, Object> latestResult = latestResults.get(0);
+                log.info("조회 결과의 키 목록: {}", latestResult.keySet());
+
+                // 필요없는 메타데이터 필드 제거
+                Map<String, Object> cleanResult = new HashMap<>(latestResult);
+                cleanResult.remove("time");
+                cleanResult.remove("_time");
+                cleanResult.remove("table");
+                cleanResult.remove("result");
+                cleanResult.remove("_start");
+                cleanResult.remove("_stop");
+                cleanResult.remove("_measurement");
+
+                // OPC_UA 키 아래에 평탄화된 데이터 넣기
+                Map<String, Object> opcuaData = new HashMap<>();
+                opcuaData.put("OPC_UA", cleanResult);
+                wsMessage.put("data", opcuaData);
+
+                log.info("프론트엔드로 전송할 OPC_UA 데이터: 필드 수={}", cleanResult.size());
+            } else {
+                // 데이터가 없는 경우 OPC UA 클라이언트에서 직접 데이터 가져오기
+                log.warn("InfluxDB에서 데이터를 찾을 수 없습니다. OPC UA 클라이언트에서 직접 데이터를 가져옵니다.");
+                Map<String, Map<String, Object>> currentData = opcuaClient.readAllValues();
+
+                // allData를 평탄화하여 OPC_UA 키 아래에 넣기
+                Map<String, Object> flattenedData = flattenData(currentData);
+                Map<String, Object> opcuaData = new HashMap<>();
+                opcuaData.put("OPC_UA", flattenedData);
+                wsMessage.put("data", opcuaData);
+
+                log.info("OPC UA 클라이언트에서 직접 가져온 데이터: 필드 수={}", flattenedData.size());
+            }
 
             // 이벤트 발행
             eventPublisher.publishEvent(new OpcuaDataEvent(this, wsMessage));
-            log.debug("OPC UA 최신 데이터 전송 완료: {}", timestamp);
+            log.info("OPC UA 데이터 전송 완료");
+
         } catch (Exception e) {
             log.error("OPC UA 최신 데이터 조회 및 전송 중 오류: {}", e.getMessage(), e);
 
-            // 조회 실패 시 대안으로 메모리에서 직접 데이터 전송 (선택사항)
+            // 오류 발생 시 직접 데이터 전송
             try {
                 Map<String, Map<String, Object>> currentData = opcuaClient.readAllValues();
-                sendDataDirectly(currentData, LocalDateTime.now());
-                log.info("대체 방식으로 현재 데이터 직접 전송 성공");
+                sendDataDirectlyWithOpcUAFormat(currentData, LocalDateTime.now());
             } catch (Exception ex) {
                 log.error("대체 데이터 전송도 실패: {}", ex.getMessage());
             }
         }
     }
 
-    /**
-     * InfluxDB에서 조회한 평탄화된 데이터를 그룹화
-     */
-    private Map<String, Map<String, Object>> groupInfluxData(Map<String, Object> influxData) {
-        Map<String, Map<String, Object>> groupedData = new HashMap<>();
+    // OPC_UA 형식으로 데이터 전송
+    private void sendDataDirectlyWithOpcUAFormat(Map<String, Map<String, Object>> allData, LocalDateTime timestamp) {
+        try {
+            // 데이터 평탄화
+            Map<String, Object> flattenedData = flattenData(allData);
 
-        // 시간 필드 제거 (time과 _time 모두)
-        influxData.remove("time");
-        influxData.remove("_time");
-        influxData.remove("table"); // 테이블 번호 필드도 제거
-        influxData.remove("result"); // 결과 메타데이터도 제거
+            // 로그 추가
+            log.info("전송할 데이터 필드 수: {}", flattenedData.size());
+            log.info("샘플 필드: {}",
+                    flattenedData.keySet().stream().limit(5).collect(Collectors.joining(", ")));
 
-        // 그룹화 작업
-        for (Map.Entry<String, Object> entry : influxData.entrySet()) {
-            String key = entry.getKey();
-            Object value = entry.getValue();
-
-            // Instant 타입은 문자열로 변환
-            if (value instanceof Instant) {
-                value = ((Instant) value).toString();
+            // 필수 필드 확인
+            String[] requiredFields = { "Filtered_Grid_Freq", "PCS1_TPWR_P_REAL" };
+            for (String field : requiredFields) {
+                log.info("필드 {} 값: {}", field, flattenedData.get(field));
             }
 
-            // 그룹_필드명 패턴 확인 (예: PCS1_SOC)
-            int underscoreIdx = key.indexOf('_');
+            // OPC_UA 형식으로 변환
+            Map<String, Object> opcuaData = new HashMap<>();
+            opcuaData.put("OPC_UA", flattenedData);
 
-            if (underscoreIdx > 0) {
-                String groupName = key.substring(0, underscoreIdx);
-                String fieldName = key.substring(underscoreIdx + 1);
+            Map<String, Object> wsMessage = new HashMap<>();
+            wsMessage.put("type", "opcua");
+            wsMessage.put("timestamp", timestamp.toString());
+            wsMessage.put("data", opcuaData);
 
-                groupedData.computeIfAbsent(groupName, k -> new HashMap<>()).put(fieldName, value);
-            } else {
-                // 언더스코어가 없는 경우 Common 그룹에 저장
-                groupedData.computeIfAbsent("Common", k -> new HashMap<>()).put(key, value);
-            }
+            // 메시지 발행
+            eventPublisher.publishEvent(new OpcuaDataEvent(this, wsMessage));
+            log.info("OPC UA 데이터 전송 완료");
+        } catch (Exception e) {
+            log.error("OPC UA 데이터 전송 중 오류: {}", e.getMessage(), e);
         }
-
-        return groupedData;
     }
 
     /**
@@ -538,22 +526,5 @@ public class OpcuaService {
      */
     private String formatDateTime(LocalDateTime time) {
         return time.format(DateTimeFormatter.ISO_DATE_TIME);
-    }
-
-    // 데이터를 저장하지 않고 직접 전송하는 새로운 메서드 (해결 방안 2용)
-    private void sendDataDirectly(Map<String, Map<String, Object>> allData, LocalDateTime timestamp) {
-        try {
-            // 웹소켓 메시지 구성
-            Map<String, Object> wsMessage = new HashMap<>();
-            wsMessage.put("type", "opcua");
-            wsMessage.put("timestamp", timestamp.toString());
-            wsMessage.put("data", allData);
-
-            // 이벤트 발행
-            eventPublisher.publishEvent(new OpcuaDataEvent(this, wsMessage));
-            log.debug("OPC UA 데이터 직접 전송 완료: {}", timestamp);
-        } catch (Exception e) {
-            log.error("OPC UA 데이터 직접 전송 중 오류: {}", e.getMessage(), e);
-        }
     }
 }
