@@ -1,5 +1,6 @@
 package com.yth.realtime.service;
 
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -120,29 +121,66 @@ public class ModbusService {
             log.error("24시간 이전 데이터 전송 중 오류 발생: {}", e.getMessage(), e);
         }
     }
+//   /**
+//      * Modbus 데이터를 읽어서 InfluxDB에 저장하고 반환
+//      */
+//     public int[] readModbusData(ModbusDevice device) throws Exception {
+//         ModbusTCPMaster master = getOrCreateConnection(device);
+//         try {
+//             Register[] registers = master.readMultipleRegisters(
+//                     device.getSlaveId(),
+//                     device.getStartAddress(),
+//                     device.getLength());
+
+//             int[] data = new int[] { registers[0].getValue(), registers[1].getValue() };
+
+//             // 현재 시간을 초 단위로 가져옴
+//             long currentTime = System.currentTimeMillis() / 1000;
+//             Long lastSave = lastDataSaveTime.get(device.getDeviceId());
+
+//             // 마지막 저장으로부터 5초가 지났거나 처음 저장하는 경우에만 저장
+//             if (lastSave == null || (currentTime - lastSave) >= SAVE_INTERVAL) {
+//                 double temperature = data[0] / 10.0;
+//                 double humidity = data[1] / 10.0;
+
+//                 try {
+//                     influxDBService.saveSensorData(temperature, humidity, device.getHost(), device.getDeviceId());
+//                     lastDataSaveTime.put(device.getDeviceId(), currentTime);
+//                     log.debug("데이터 저장 완료 - deviceId: {}, temp: {}, humidity: {}",
+//                             device.getDeviceId(), temperature, humidity);
+//                 } catch (Exception e) {
+//                     log.error("데이터 저장 실패: {} - {}", device.getDeviceId(), e.getMessage());
+//                 }
+//             }
+
+//             return data;
+//         } catch (Exception e) {
+//             log.error("데이터 읽기 실패: {} - {}", device.getDeviceId(), e.getMessage());
+//             throw e;
+//         }
+//     }
 
     /**
-     * Modbus 데이터를 읽어서 InfluxDB에 저장하고 반환
+     * Modbus 데이터를 읽어서 InfluxDB에 저장하고 저장된 데이터를 조회하여 반환
      */
-    public int[] readModbusData(ModbusDevice device) throws Exception {
+    public Map<String, Object> readModbusData(ModbusDevice device) throws Exception {
         ModbusTCPMaster master = getOrCreateConnection(device);
         try {
+            // 1. 장치에서 레지스터 값 읽기
             Register[] registers = master.readMultipleRegisters(
                     device.getSlaveId(),
                     device.getStartAddress(),
                     device.getLength());
 
-            int[] data = new int[] { registers[0].getValue(), registers[1].getValue() };
+            // 2. 온도와 습도 값 스케일링
+            double temperature = registers[0].getValue() / 10.0;
+            double humidity = registers[1].getValue() / 10.0;
 
-            // 현재 시간을 초 단위로 가져옴
+            // 3. InfluxDB에 데이터 저장
             long currentTime = System.currentTimeMillis() / 1000;
             Long lastSave = lastDataSaveTime.get(device.getDeviceId());
 
-            // 마지막 저장으로부터 5초가 지났거나 처음 저장하는 경우에만 저장
             if (lastSave == null || (currentTime - lastSave) >= SAVE_INTERVAL) {
-                double temperature = data[0] / 10.0;
-                double humidity = data[1] / 10.0;
-
                 try {
                     influxDBService.saveSensorData(temperature, humidity, device.getHost(), device.getDeviceId());
                     lastDataSaveTime.put(device.getDeviceId(), currentTime);
@@ -153,7 +191,20 @@ public class ModbusService {
                 }
             }
 
-            return data;
+            // 4. 저장된 최신 데이터 조회
+            Map<String, Object> latestData = influxDBService.getLatestSensorData(device.getDeviceId());
+
+            // 5. 조회 결과가 없으면 직접 읽은 데이터 사용
+            if (latestData == null || latestData.isEmpty()) {
+                latestData = new HashMap<>();
+                latestData.put("temperature", temperature);
+                latestData.put("humidity", humidity);
+                latestData.put("deviceId", device.getDeviceId());
+                latestData.put("time", LocalDateTime.now());
+            }
+
+            log.debug("반환 데이터: {}", latestData);
+            return latestData;
         } catch (Exception e) {
             log.error("데이터 읽기 실패: {} - {}", device.getDeviceId(), e.getMessage());
             throw e;

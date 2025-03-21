@@ -57,6 +57,8 @@ influxdb:
   token: ${INFLUX_TOKEN}
   org: youn # InfluxDB Organization 이름
   bucket: ydata # 기본 버킷 이름
+  write-timeout: 30000 # 쓰기 타임아웃 30초로 증가
+  read-timeout: 30000 # 읽기 타임아웃 30초로 증가
   retention-policy: autogen # 데이터 보존 정책 (기본값: autogen)
   timeout: 5000 # 요청 타임아웃 (ms)
   connection-pool-size: 10 # 연결 풀 크기 (동시 연결 제한)

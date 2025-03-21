@@ -96,11 +96,82 @@ public class OpcuaInfluxDBService {
      * @param measurement InfluxDBMeasurement 객체
      */
     public void saveData(InfluxDBMeasurement measurement) {
-        Map<String, String> tags = measurement.getTags();
-        Map<String, Object> fields = measurement.getFields();
-        Instant timestamp = measurement.getTimestamp();
+        try {
+            log.info("InfluxDB 저장 호출: 측정명={}, 태그 수={}, 필드 수={}",
+                    measurement.getMeasurement(),
+                    measurement.getTags().size(),
+                    measurement.getFields().size());
 
-        saveOpcuaData(measurement.getMeasurement(), tags, fields, timestamp);
+            // 데이터 형식 검증
+            for (Map.Entry<String, Object> field : measurement.getFields().entrySet()) {
+                if (field.getValue() == null) {
+                    log.warn("필드 {} 값이 null입니다. 이 필드는 저장되지 않습니다.", field.getKey());
+                }
+            }
+
+            Map<String, String> tags = measurement.getTags();
+            Map<String, Object> fields = measurement.getFields();
+            Instant timestamp = measurement.getTimestamp();
+
+            // 저장 실행
+            Point point = Point.measurement(measurement.getMeasurement());
+
+            // 태그 추가
+            for (Map.Entry<String, String> tag : tags.entrySet()) {
+                point.addTag(tag.getKey(), tag.getValue());
+                log.debug("추가된 태그: {}={}", tag.getKey(), tag.getValue());
+            }
+
+            // 필드 로깅 (첫 5개만 상세 출력)
+            int fieldCounter = 0;
+            for (Map.Entry<String, Object> entry : fields.entrySet()) {
+                if (fieldCounter < 5) {
+                    log.debug("필드 상세 {}. {}={} (타입: {})",
+                            fieldCounter + 1,
+                            entry.getKey(),
+                            entry.getValue(),
+                            entry.getValue() != null ? entry.getValue().getClass().getSimpleName() : "null");
+                }
+                fieldCounter++;
+            }
+
+            // 필드 추가 (기존 코드와 동일)
+            fields.forEach((key, value) -> {
+                if (value instanceof Double) {
+                    point.addField(key, (Double) value);
+                } else if (value instanceof Float) {
+                    point.addField(key, (Float) value);
+                } else if (value instanceof Integer) {
+                    point.addField(key, (Integer) value);
+                } else if (value instanceof Long) {
+                    point.addField(key, (Long) value);
+                } else if (value instanceof Boolean) {
+                    point.addField(key, (Boolean) value);
+                } else if (value instanceof String) {
+                    point.addField(key, (String) value);
+                } else if (value != null) {
+                    point.addField(key, value.toString());
+                }
+            });
+
+            // 타임스탬프 설정
+            point.time(timestamp, WritePrecision.NS);
+
+            // 로그 추가: 저장 직전 Point 정보
+            log.info("Point 생성 완료: 측정명={}, 시간={}",
+                    measurement.getMeasurement(), timestamp);
+
+            WriteApiBlocking writeApi = influxDBClient.getWriteApiBlocking();
+            writeApi.writePoint(bucket, org, point);
+
+            log.info("InfluxDB 저장 성공: 버킷={}, 측정명={}, 필드 수={}, 시간={}",
+                    bucket, measurement.getMeasurement(), fields.size(), timestamp);
+
+        } catch (Exception e) {
+            log.error("InfluxDB 저장 실패 - 상세 오류: {} ({})",
+                    e.getMessage(), e.getClass().getSimpleName(), e);
+            throw new RuntimeException("InfluxDB 데이터 저장 실패", e);
+        }
     }
 
     /**
@@ -119,10 +190,15 @@ public class OpcuaInfluxDBService {
                 for (FluxRecord record : table.getRecords()) {
                     Map<String, Object> dataPoint = new HashMap<>();
 
-                    // 타임스탬프 처리
+                    // 타임스탬프 처리 - 수정된 부분
                     if (record.getTime() != null) {
+                        // InfluxDB의 Instant를 LocalDateTime으로 변환
                         dataPoint.put("time", LocalDateTime.ofInstant(
                                 record.getTime(), ZoneId.systemDefault()));
+
+                        // 디버깅용 로그 추가
+                        log.debug("시간 변환: {} -> {}", record.getTime(),
+                                dataPoint.get("time"));
                     }
 
                     // 모든 필드 추출
@@ -180,7 +256,7 @@ public class OpcuaInfluxDBService {
 
         String query = String.format(
                 "from(bucket: \"%s\") " +
-                        "|> range(start: -1m) " +
+                        "|> range(start: -5m) " +
                         "|> filter(fn: (r) => r._measurement == \"opcua_data\" %s) " +
                         "|> pivot(rowKey:[\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\") " +
                         "|> sort(columns: [\"_time\"], desc: true) " +
@@ -277,4 +353,32 @@ public class OpcuaInfluxDBService {
 
         return stats;
     }
+
+    /**
+     * 현재 설정된 버킷 이름 반환
+     * 
+     * @return 버킷 이름
+     */
+    public String getBucket() {
+        return this.bucket;
+    }
+
+    /**
+     * WriteApi 객체 가져오기
+     * 
+     * @return WriteApiBlocking 인스턴스
+     */
+    public WriteApiBlocking getWriteApi() {
+        return influxDBClient.getWriteApiBlocking();
+    }
+
+    /**
+     * 조직 이름 가져오기
+     * 
+     * @return InfluxDB 조직 이름
+     */
+    public String getOrg() {
+        return this.org;
+    }
+
 }
