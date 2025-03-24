@@ -25,7 +25,6 @@ import com.influxdb.client.write.Point;
 import com.yth.realtime.controller.OpcuaWebSocketHandler;
 import com.yth.realtime.event.OpcuaDataEvent;
 
-import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 
 @Service
@@ -53,16 +52,43 @@ public class OpcuaService {
     /**
      * 서비스 시작 시 OPC UA 서버에 연결 시도
      */
-    @PostConstruct
-    public void init() {
-        try {
-            connect();
-            startDataCollection();
-        } catch (Exception e) {
-            log.error("OPC UA 서비스 초기화 실패: {}", e.getMessage(), e);
-            // 실패해도 애플리케이션은 계속 실행
-        }
-    }
+    // @PostConstruct
+    // public void init() {
+    // try {
+    // connect();
+    // startDataCollection();
+    // } catch (Exception e) {
+    // log.error("OPC UA 서비스 초기화 실패: {}", e.getMessage(), e);
+    // // 실패해도 애플리케이션은 계속 실행
+    // }
+    // }
+
+    // 대신 아래와 같이 명시적 시작 메서드 추가
+    // public void startService() {
+    // try {
+    // connect();
+    // startDataCollection();
+    // log.info("OPC UA 서비스 수동으로 시작됨");
+    // } catch (Exception e) {
+    // log.error("OPC UA 서비스 시작 실패: {}", e.getMessage(), e);
+    // }
+    // }
+
+    // // 중지 메서드 추가
+    // public void stopService() {
+    // try {
+    // if (scheduler != null) {
+    // scheduler.shutdown();
+    // log.info("OPC UA 데이터 수집 스케줄러 중지됨");
+    // }
+    // if (opcuaClient != null) {
+    // opcuaClient.disconnect();
+    // log.info("OPC UA 클라이언트 연결 해제됨");
+    // }
+    // } catch (Exception e) {
+    // log.error("OPC UA 서비스 중지 중 오류: {}", e.getMessage(), e);
+    // }
+    // }
 
     /**
      * 서비스 종료 시 OPC UA 연결 해제

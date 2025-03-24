@@ -133,6 +133,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
@@ -276,7 +277,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
 
                 // 모든 연결된 세션에 데이터 전송
                 List<WebSocketSession> sessions = deviceSessions.get(device.getDeviceId());
-                if (sessions != null) {
+                if (sessions != null && !sessions.isEmpty()) {
                     List<WebSocketSession> invalidSessions = new ArrayList<>();
 
                     for (WebSocketSession session : sessions) {
@@ -297,6 +298,19 @@ public class WebSocketHandler extends TextWebSocketHandler {
 
         // 스케줄러 저장
         deviceSchedulers.put(device.getDeviceId(), future);
+    }
+
+    // 추가
+    // WebSocketHandler에 세션 종료 시 처리 로직 추가
+    @Override
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+        sessions.remove(session);
+        log.info("WebSocket 연결 종료. 남은 세션: {}", sessions.size());
+        // 마지막 세션이 종료되면 모든 모드버스 연결 중지
+        if (sessions.isEmpty()) {
+            log.info("모든 WebSocket 연결 종료됨. 모드버스 연결 중지됨.");
+            modbusService.disconnectAllDevices();
+        }
     }
 
     // /**
@@ -331,4 +345,26 @@ public class WebSocketHandler extends TextWebSocketHandler {
     // log.error("OPC UA 데이터 JSON 변환 실패: {}", e.getMessage(), e);
     // }
     // }
+
+    /**
+     * 모든 웹소켓 세션을 정리하는 메서드
+     * 장치 연결이나 스케줄러는 종료하지 않고 웹소켓 연결만 해제합니다.
+     */
+    public void clearAllSessions() {
+        log.info("모든 웹소켓 세션 정리 - 연결된 세션 수: {}", sessions.size());
+
+        for (WebSocketSession session : new ArrayList<>(sessions)) {
+            try {
+                if (session.isOpen()) {
+                    session.close();
+                    log.info("웹소켓 세션 정상 종료: {}", session.getId());
+                }
+            } catch (Exception e) {
+                log.error("웹소켓 세션 종료 실패: {}", e.getMessage());
+            }
+        }
+
+        sessions.clear();
+        log.info("모든 웹소켓 세션 정리 완료");
+    }
 }

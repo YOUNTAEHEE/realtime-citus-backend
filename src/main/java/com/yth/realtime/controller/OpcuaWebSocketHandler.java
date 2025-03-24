@@ -281,4 +281,26 @@ public class OpcuaWebSocketHandler extends TextWebSocketHandler {
         System.out.println("이벤트 발행: " + message);
         eventPublisher.publishEvent(new OpcuaDataEvent(this, message));
     }
+
+    /**
+     * 모든 OPC UA 웹소켓 세션을 정리하는 메서드
+     * OPC UA 연결이나 데이터 수집은 유지하고 웹소켓 연결만 해제합니다.
+     */
+    public void clearAllSessions() {
+        log.info("모든 OPC UA 웹소켓 세션 정리 - 연결된 세션 수: {}", sessions.size());
+
+        for (WebSocketSession session : new ArrayList<>(sessions)) {
+            try {
+                if (session.isOpen()) {
+                    session.close();
+                    log.info("OPC UA 웹소켓 세션 정상 종료: {}", session.getId());
+                }
+            } catch (Exception e) {
+                log.error("OPC UA 웹소켓 세션 종료 실패: {}", e.getMessage());
+            }
+        }
+
+        sessions.clear();
+        log.info("모든 OPC UA 웹소켓 세션 정리 완료");
+    }
 }

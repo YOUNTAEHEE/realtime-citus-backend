@@ -1,6 +1,5 @@
 package com.yth.realtime.service;
 
-import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -8,6 +7,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -42,6 +44,9 @@ public class ModbusService {
     private final ModbusDeviceRepository modbusDeviceRepository;
     private final SettingsRepository settingsRepository;
 
+    // scheduler 변수 추가
+    private ScheduledExecutorService scheduler;
+
     // ApplicationEventPublisher 추가 (이벤트 기반 통신 위해)
     private final ApplicationEventPublisher eventPublisher;
 
@@ -55,12 +60,23 @@ public class ModbusService {
         this.eventPublisher = eventPublisher;
     }
 
+    // @PostConstruct
+    // public void init() {
+    // log.info("ModbusService 초기화 시작");
+    // try {
+    // // 여기에 기존 초기화 코드
+
+    // log.info("ModbusService 초기화 완료");
+    // } catch (Exception e) {
+    // log.error("ModbusService 초기화 실패: {}", e.getMessage(), e);
+    // }
+    // }
+
     /**
      * 장치를 등록하는 메서드
      */
     public boolean addDevice(ModbusDevice device) {
         try {
-
             // 장치 연결 테스트
             ModbusTCPMaster master = new ModbusTCPMaster(device.getHost(), device.getPort());
             master.setTimeout(1000);
@@ -80,6 +96,12 @@ public class ModbusService {
                     modbusDeviceRepository.save(ModbusDeviceDocument.from(device));
                 }
                 log.info("장치 연결 성공: {}", device);
+
+                // 스케줄러가 없으면 초기화
+                if (scheduler == null || scheduler.isShutdown()) {
+                    scheduler = Executors.newScheduledThreadPool(1);
+                    log.info("모드버스 스케줄러 초기화");
+                }
 
                 // 장치 등록 성공 시 24시간 이전 데이터 전송
                 sendHistoricalData(device.getDeviceId());
@@ -121,68 +143,32 @@ public class ModbusService {
             log.error("24시간 이전 데이터 전송 중 오류 발생: {}", e.getMessage(), e);
         }
     }
-//   /**
-//      * Modbus 데이터를 읽어서 InfluxDB에 저장하고 반환
-//      */
-//     public int[] readModbusData(ModbusDevice device) throws Exception {
-//         ModbusTCPMaster master = getOrCreateConnection(device);
-//         try {
-//             Register[] registers = master.readMultipleRegisters(
-//                     device.getSlaveId(),
-//                     device.getStartAddress(),
-//                     device.getLength());
-
-//             int[] data = new int[] { registers[0].getValue(), registers[1].getValue() };
-
-//             // 현재 시간을 초 단위로 가져옴
-//             long currentTime = System.currentTimeMillis() / 1000;
-//             Long lastSave = lastDataSaveTime.get(device.getDeviceId());
-
-//             // 마지막 저장으로부터 5초가 지났거나 처음 저장하는 경우에만 저장
-//             if (lastSave == null || (currentTime - lastSave) >= SAVE_INTERVAL) {
-//                 double temperature = data[0] / 10.0;
-//                 double humidity = data[1] / 10.0;
-
-//                 try {
-//                     influxDBService.saveSensorData(temperature, humidity, device.getHost(), device.getDeviceId());
-//                     lastDataSaveTime.put(device.getDeviceId(), currentTime);
-//                     log.debug("데이터 저장 완료 - deviceId: {}, temp: {}, humidity: {}",
-//                             device.getDeviceId(), temperature, humidity);
-//                 } catch (Exception e) {
-//                     log.error("데이터 저장 실패: {} - {}", device.getDeviceId(), e.getMessage());
-//                 }
-//             }
-
-//             return data;
-//         } catch (Exception e) {
-//             log.error("데이터 읽기 실패: {} - {}", device.getDeviceId(), e.getMessage());
-//             throw e;
-//         }
-//     }
 
     /**
-     * Modbus 데이터를 읽어서 InfluxDB에 저장하고 저장된 데이터를 조회하여 반환
+     * Modbus 데이터를 읽어서 InfluxDB에 저장하고 반환
      */
-    public Map<String, Object> readModbusData(ModbusDevice device) throws Exception {
+    public int[] readModbusData(ModbusDevice device) throws Exception {
         ModbusTCPMaster master = getOrCreateConnection(device);
         try {
-            // 1. 장치에서 레지스터 값 읽기
             Register[] registers = master.readMultipleRegisters(
                     device.getSlaveId(),
                     device.getStartAddress(),
                     device.getLength());
 
-            // 2. 온도와 습도 값 스케일링
-            double temperature = registers[0].getValue() / 10.0;
-            double humidity = registers[1].getValue() / 10.0;
+            int[] data = new int[] { registers[0].getValue(), registers[1].getValue() };
 
-            // 3. InfluxDB에 데이터 저장
+            // 현재 시간을 초 단위로 가져옴
             long currentTime = System.currentTimeMillis() / 1000;
             Long lastSave = lastDataSaveTime.get(device.getDeviceId());
 
+            // 마지막 저장으로부터 5초가 지났거나 처음 저장하는 경우에만 저장
             if (lastSave == null || (currentTime - lastSave) >= SAVE_INTERVAL) {
+                double temperature = data[0] / 10.0;
+                double humidity = data[1] / 10.0;
+
                 try {
-                    influxDBService.saveSensorData(temperature, humidity, device.getHost(), device.getDeviceId());
+                    influxDBService.saveSensorData(temperature, humidity, device.getHost(),
+                            device.getDeviceId());
                     lastDataSaveTime.put(device.getDeviceId(), currentTime);
                     log.debug("데이터 저장 완료 - deviceId: {}, temp: {}, humidity: {}",
                             device.getDeviceId(), temperature, humidity);
@@ -191,25 +177,66 @@ public class ModbusService {
                 }
             }
 
-            // 4. 저장된 최신 데이터 조회
-            Map<String, Object> latestData = influxDBService.getLatestSensorData(device.getDeviceId());
-
-            // 5. 조회 결과가 없으면 직접 읽은 데이터 사용
-            if (latestData == null || latestData.isEmpty()) {
-                latestData = new HashMap<>();
-                latestData.put("temperature", temperature);
-                latestData.put("humidity", humidity);
-                latestData.put("deviceId", device.getDeviceId());
-                latestData.put("time", LocalDateTime.now());
-            }
-
-            log.debug("반환 데이터: {}", latestData);
-            return latestData;
+            return data;
         } catch (Exception e) {
             log.error("데이터 읽기 실패: {} - {}", device.getDeviceId(), e.getMessage());
             throw e;
         }
     }
+
+    /**
+     * Modbus 데이터를 읽어서 InfluxDB에 저장하고 저장된 데이터를 조회하여 반환
+     */
+    // public Map<String, Object> readModbusData(ModbusDevice device) throws
+    // Exception {
+    // ModbusTCPMaster master = getOrCreateConnection(device);
+    // try {
+    // // 1. 장치에서 레지스터 값 읽기
+    // Register[] registers = master.readMultipleRegisters(
+    // device.getSlaveId(),
+    // device.getStartAddress(),
+    // device.getLength());
+
+    // // 2. 온도와 습도 값 스케일링
+    // double temperature = registers[0].getValue() / 10.0;
+    // double humidity = registers[1].getValue() / 10.0;
+
+    // // 3. InfluxDB에 데이터 저장
+    // long currentTime = System.currentTimeMillis() / 1000;
+    // Long lastSave = lastDataSaveTime.get(device.getDeviceId());
+
+    // if (lastSave == null || (currentTime - lastSave) >= SAVE_INTERVAL) {
+    // try {
+    // influxDBService.saveSensorData(temperature, humidity, device.getHost(),
+    // device.getDeviceId());
+    // lastDataSaveTime.put(device.getDeviceId(), currentTime);
+    // log.debug("데이터 저장 완료 - deviceId: {}, temp: {}, humidity: {}",
+    // device.getDeviceId(), temperature, humidity);
+    // } catch (Exception e) {
+    // log.error("데이터 저장 실패: {} - {}", device.getDeviceId(), e.getMessage());
+    // }
+    // }
+
+    // // 4. 저장된 최신 데이터 조회
+    // // Map<String, Object> latestData =
+    // influxDBService.getLatestSensorData(device.getDeviceId());
+
+    // // 5. 조회 결과가 없으면 직접 읽은 데이터 사용
+    // // if (latestData == null || latestData.isEmpty()) {
+    // // latestData = new HashMap<>();
+    // // latestData.put("temperature", temperature);
+    // // latestData.put("humidity", humidity);
+    // // latestData.put("deviceId", device.getDeviceId());
+    // // latestData.put("time", LocalDateTime.now());
+    // // }
+
+    // log.debug("반환 데이터: {}", latestData);
+    // return latestData;
+    // } catch (Exception e) {
+    // log.error("데이터 읽기 실패: {} - {}", device.getDeviceId(), e.getMessage());
+    // throw e;
+    // }
+    // }
 
     private ModbusTCPMaster getOrCreateConnection(ModbusDevice device) throws Exception {
         ModbusTCPMaster master = modbusMasters.get(device.getDeviceId());
@@ -263,6 +290,7 @@ public class ModbusService {
     }
 
     public boolean deleteDevice(String deviceId) {
+        removeDevice(deviceId);// 추가
         long result = modbusDeviceRepository.deleteByDeviceId(deviceId);
         if (result > 0) {
             return true;
@@ -424,5 +452,66 @@ public class ModbusService {
         return modbusDeviceRepository.findByDeviceId(deviceId)
                 .map(ModbusDeviceDocument::toModbusDevice)
                 .orElse(null);
+    }
+
+    /**
+     * 모드버스 서비스의 스케줄러를 중지하는 메서드
+     * 실행 중인 모든 스케줄링 작업을 안전하게 종료합니다.
+     */
+    public void stopScheduler() {
+        log.info("모드버스 스케줄러 중지 시작");
+
+        try {
+            // 기존 스케줄러가 있고 아직 종료되지 않았다면 종료
+            if (scheduler != null && !scheduler.isShutdown()) {
+                // 즉시 종료 요청 (실행 중인 작업도 중단)
+                scheduler.shutdownNow();
+
+                // 최대 5초간 모든 작업이 종료될 때까지 대기
+                boolean terminated = scheduler.awaitTermination(5, TimeUnit.SECONDS);
+
+                if (terminated) {
+                    log.info("모드버스 스케줄러가 정상적으로 종료되었습니다.");
+                } else {
+                    log.warn("모드버스 스케줄러 종료 타임아웃: 일부 작업이 여전히 실행 중일 수 있습니다.");
+                }
+
+                // 스케줄러 참조 제거
+                scheduler = null;
+            } else {
+                log.info("종료할 모드버스 스케줄러가 없거나 이미 종료되었습니다.");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt(); // 인터럽트 상태 복원
+            log.error("모드버스 스케줄러 종료 중 인터럽트 발생", e);
+        } catch (Exception e) {
+            log.error("모드버스 스케줄러 종료 중 예외 발생", e);
+        }
+
+        log.info("모드버스 스케줄러 중지 완료");
+    }
+
+    /**
+     * 모든 Modbus 장치 연결을 종료하는 메서드
+     */
+    public void disconnectAllDevices() {
+        log.info("모든 Modbus 장치 연결 종료 시작");
+
+        // 스케줄러 종료
+        // stopScheduler();
+
+        modbusMasters.forEach((deviceId, master) -> {
+            try {
+                master.disconnect();
+                log.info("Modbus 장치 연결 종료 성공: {}", deviceId);
+            } catch (Exception e) {
+                log.error("Modbus 장치 연결 종료 실패: {} - {}", deviceId, e.getMessage(), e);
+            }
+        });
+
+        // 연결 객체 맵 초기화
+        modbusMasters.clear();
+
+        log.info("모든 Modbus 장치 연결 종료 완료");
     }
 }

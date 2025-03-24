@@ -21,10 +21,11 @@ import lombok.extern.slf4j.Slf4j;
 public class OpcuaController {
 
     private final OpcuaService opcuaService;
-
+    private final OpcuaWebSocketHandler webSocketHandler;
     @Autowired
-    public OpcuaController(OpcuaService opcuaService) {
+    public OpcuaController(OpcuaService opcuaService, OpcuaWebSocketHandler webSocketHandler) {
         this.opcuaService = opcuaService;
+        this.webSocketHandler = webSocketHandler;
     }
 
     @GetMapping("/status")
@@ -63,6 +64,18 @@ public class OpcuaController {
     }
 
     @PostMapping("/stop")
+    public ResponseEntity<?> stopOpcuaService() {
+        log.info("OPC UA 서비스 중지 요청 수신 - 웹소켓 연결만 해제");
+        try {
+            // 웹소켓 세션만 정리하고 데이터 수집은 계속 유지
+            webSocketHandler.clearAllSessions();
+            return ResponseEntity.ok("OPC UA 웹소켓 연결이 해제되었지만 데이터 수집은 계속됩니다.");
+        } catch (Exception e) {
+            log.error("OPC UA 웹소켓 연결 해제 실패: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body("웹소켓 연결 해제 실패: " + e.getMessage());
+        }
+    }
+    @PostMapping("/stop-service")
     public ResponseEntity<Map<String, Object>> stopDataCollection() {
         opcuaService.stopDataCollection();
         Map<String, Object> response = new HashMap<>();

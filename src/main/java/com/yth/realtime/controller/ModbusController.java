@@ -1,12 +1,12 @@
 package com.yth.realtime.controller;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.socket.WebSocketSession;
 
 import com.yth.realtime.dto.ModbusDevice;
 import com.yth.realtime.dto.SettingsDTO;
@@ -26,7 +27,8 @@ import lombok.RequiredArgsConstructor;
 @RequestMapping("/api/modbus")
 @RequiredArgsConstructor
 // @CrossOrigin(origins = { "http://localhost:3000", "http://localhost:3001"})
-// @CrossOrigin(origins = { "http://localhost:3000", "http://localhost:3001", "https://realtime-citus-nagp.vercel.app" })
+// @CrossOrigin(origins = { "http://localhost:3000", "http://localhost:3001",
+// "https://realtime-citus-nagp.vercel.app" })
 // @CrossOrigin(origins = "*", allowCredentials = "false")
 public class ModbusController {
     private final ModbusService modbusService;
@@ -129,4 +131,44 @@ public class ModbusController {
         System.out.println("반환 데이터: " + settings);
         return ResponseEntity.ok().body(settings);
     }
+
+    @PostMapping("/reset-connections")
+    public ResponseEntity<?> resetConnections() {
+        log.info("모든 Modbus 연결 초기화 요청");
+        modbusService.disconnectAllDevices();
+        return ResponseEntity.ok("모든 Modbus 연결이 초기화되었습니다.");
+    }
+
+    @PostMapping("/stop")
+    public ResponseEntity<?> stopModbusService() {
+        log.info("Modbus 서비스 중지 요청 수신 - 웹소켓 연결만 해제");
+        try {
+            // 이전에 구현한 disconnectAllDevices 메서드 호출
+            // modbusService.disconnectAllDevices();
+            webSocketHandler.clearAllSessions();
+            // modbusService.stopScheduler();
+            return ResponseEntity.ok("Modbus 웹소켓 연결이 해제되었지만 데이터 수집은 계속됩니다.");
+        } catch (Exception e) {
+            log.error("Modbus 서비스 중지 실패: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body("서비스 중지 실패: " + e.getMessage());
+        }
+    }
+
+    // 완전히 서비스를 중지하는 새 엔드포인트 추가
+    @PostMapping("/stop-service")
+    public ResponseEntity<?> completelyStopModbusService() {
+        log.info("Modbus 서비스 완전 중지 요청 수신");
+        try {
+            // 스케줄러 중지 및 장치 연결 해제
+            modbusService.stopScheduler();
+            modbusService.disconnectAllDevices();
+
+            return ResponseEntity.ok("Modbus 서비스가 완전히 중지되었습니다.");
+        } catch (Exception e) {
+            log.error("Modbus 서비스 완전 중지 실패: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body("서비스 완전 중지 실패: " + e.getMessage());
+        }
+    }
+
+    
 }

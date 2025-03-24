@@ -65,3 +65,12 @@ influxdb:
   logging-level: BODY # 로그 레벨 (NONE, BASIC, HEADERS, BODY 중 선택)
   scheduler:
     delay: 60000 # 1분
+
+opcua:
+  enabled: true
+  endpoint: opc.tcp://server:4840
+
+modbus:
+  enabled: true
+  reconnect-delay: 5000
+  connection-timeout: 10000

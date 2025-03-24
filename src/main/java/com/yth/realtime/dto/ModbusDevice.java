@@ -16,8 +16,8 @@ public class ModbusDevice {
     private int length;
     private int slaveId;
 
-
-    public ModbusDevice(String deviceId, String name, String host, int port, int startAddress, int length, int slaveId) {
+    public ModbusDevice(String deviceId, String name, String host, int port, int startAddress, int length,
+            int slaveId) {
         this.deviceId = deviceId;
         this.name = name;
         this.host = host;
@@ -25,5 +25,9 @@ public class ModbusDevice {
         this.startAddress = startAddress;
         this.length = length;
         this.slaveId = slaveId;
+    }
+
+    public ModbusDevice() {
+        // 기본 생성자
     }
 }
