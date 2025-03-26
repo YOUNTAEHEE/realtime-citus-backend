@@ -120,7 +120,7 @@ public class OpcuaService {
         // 이미 실행 중인 작업이 있다면 중지
         stopDataCollection();
 
-        // 500ms 간격으로 데이터 수집 스케줄링
+        // 5ms 간격으로 데이터 수집 스케줄링
         dataCollectionTask = scheduler.scheduleAtFixedRate(() -> {
             try {
                 // OPC UA 서버 연결 상태 확인
@@ -142,7 +142,7 @@ public class OpcuaService {
             } catch (Exception e) {
                 log.error("OPC UA 데이터 수집 중 오류: {}", e.getMessage(), e);
             }
-        }, 0, 500, TimeUnit.MILLISECONDS);
+        }, 0, 5, TimeUnit.MILLISECONDS);
 
         log.info("OPC UA 데이터 수집 시작됨 (500ms 간격)");
     }
@@ -537,6 +537,15 @@ public class OpcuaService {
     public void send24HourHistoricalData(String deviceGroup) {
         LocalDateTime end = LocalDateTime.now();
         LocalDateTime start = end.minusHours(24);
+        sendHistoricalData(deviceGroup, start, end);
+    }
+
+    /**
+     * 1시간 이전 데이터 조회 및 클라이언트에 전송
+     */
+    public void send1HourHistoricalData(String deviceGroup) {
+        LocalDateTime end = LocalDateTime.now();
+        LocalDateTime start = end.minusHours(1);
         sendHistoricalData(deviceGroup, start, end);
     }
 

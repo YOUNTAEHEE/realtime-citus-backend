@@ -44,13 +44,14 @@ weather:
 
 logging:
   level:
-    root: INFO
-    org.springframework: DEBUG
-    com.yth.realtime: DEBUG
-    com.influxdb.client: DEBUG
-    com.yth.realtime.service: DEBUG
-    org.springframework.scheduling: DEBUG
+    root: WARN
+    org.springframework: WARN
+    com.yth.realtime: INFO
+    com.influxdb.client: WARN
+    com.yth.realtime.service: OFF
+    org.springframework.scheduling: WARN
     com.ghgande.j2mod.modbus.io: ERROR
+    com.yth.realtime.controller.WebSocketHandler: OFF
 
 influxdb:
   url: http://localhost:8086 # InfluxDB 서버 주소

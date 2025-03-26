@@ -119,21 +119,24 @@ public class OpcuaWebSocketHandler extends TextWebSocketHandler {
      */
     private void handleHistoricalDataRequest(WebSocketSession session, Map<String, Object> request) throws IOException {
         String deviceGroup = (String) request.getOrDefault("deviceGroup", "all");
-        Integer hours = (Integer) request.getOrDefault("hours", 24);
+        Integer hours = (Integer) request.getOrDefault("hours", 1);
 
         log.info("과거 데이터 요청 처리: 장치그룹={}, 시간범위={}시간", deviceGroup, hours);
 
         // InfluxDB에서 과거 데이터 조회
-        List<Map<String, Object>> historicalData = opcuaInfluxDBService.getRecentOpcuaData(deviceGroup, hours * 60); // 시간을
-                                                                                                                     // 분으로
-                                                                                                                     // 변환
+        List<Map<String, Object>> historicalData = opcuaInfluxDBService.getRecentOpcuaData(deviceGroup, hours * 60);
 
         Map<String, Object> response = new HashMap<>();
         response.put("type", "historicalData");
+
+        // 중요 변경: 클라이언트가 기대하는 구조로 변경
+        Map<String, Object> dataContainer = new HashMap<>();
+        dataContainer.put("timeSeries", historicalData); // 데이터를 timeSeries 키로 감싸기
+        response.put("data", dataContainer);
+
         response.put("deviceGroup", deviceGroup);
         response.put("period", hours + "h");
         response.put("count", historicalData.size());
-        response.put("data", historicalData);
 
         session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
         log.info("과거 데이터 전송 완료: 장치={}, 기간={}시간, 데이터 수={}",
