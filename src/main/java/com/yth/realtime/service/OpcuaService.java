@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -39,6 +40,9 @@ public class OpcuaService {
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
     private ScheduledFuture<?> dataCollectionTask;
     private boolean autoReconnect = true;
+
+    private final ExecutorService dbSaveExecutor = Executors.newFixedThreadPool(5);
+    private final ExecutorService dbQueryExecutor = Executors.newFixedThreadPool(5);
 
     @Autowired
     public OpcuaService(OpcuaClient opcuaClient, OpcuaWebSocketHandler opcuaWebSocketHandler,
@@ -97,6 +101,23 @@ public class OpcuaService {
     public void cleanup() {
         stopDataCollection();
         disconnect();
+
+        // 스레드풀 정리
+        dbSaveExecutor.shutdown();
+        dbQueryExecutor.shutdown();
+
+        try {
+            if (!dbSaveExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                dbSaveExecutor.shutdownNow();
+            }
+            if (!dbQueryExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                dbQueryExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            dbSaveExecutor.shutdownNow();
+            dbQueryExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**
@@ -122,6 +143,7 @@ public class OpcuaService {
 
         // 5ms 간격으로 데이터 수집 스케줄링
         dataCollectionTask = scheduler.scheduleAtFixedRate(() -> {
+            long startTime = System.currentTimeMillis();
             try {
                 // OPC UA 서버 연결 상태 확인
                 if (!opcuaClient.isConnected()) {
@@ -132,19 +154,56 @@ public class OpcuaService {
                     return;
                 }
 
-                // 모든 그룹의 데이터 수집
+                // 데이터 수집 시간 측정
+                long collectionStart = System.currentTimeMillis();
                 Map<String, Map<String, Object>> allData = opcuaClient.readAllValues();
+                long collectionTime = System.currentTimeMillis() - collectionStart;
+
                 LocalDateTime timestamp = LocalDateTime.now();
 
-                // 수집한 데이터 처리
-                processOpcuaData(allData, timestamp);
+                // 1. DB 저장 스레드
+                final Map<String, Map<String, Object>> dataCopy = new HashMap<>(allData);
+                dbSaveExecutor.submit(() -> {
+                    try {
+                        long saveStart = System.currentTimeMillis();
+                        saveToInfluxDB(dataCopy, timestamp);
+                        long saveTime = System.currentTimeMillis() - saveStart;
+                        log.debug("DB 저장 완료: 시간={}, 소요시간={}ms", timestamp, saveTime);
+                    } catch (Exception e) {
+                        log.error("DB 저장 오류: {}", e.getMessage());
+                    }
+                });
+
+                // 2. 별도로 DB 조회 스레드
+                dbQueryExecutor.submit(() -> {
+                    try {
+                        // DB 조회 시간 측정
+                        long queryStart = System.currentTimeMillis();
+                        Map<String, Object> latestData = influxDBService.getLatestOpcuaData("all");
+                        long queryTime = System.currentTimeMillis() - queryStart;
+
+                        // 조회한 데이터를 프론트엔드로 전송
+                        sendDataToFrontend(latestData);
+
+                        log.debug("DB 조회 및 전송 완료: 조회시간={}ms", queryTime);
+                    } catch (Exception e) {
+                        log.error("DB 조회 오류: {}", e.getMessage());
+                    }
+                });
+
+                // 전체 작업 소요 시간 측정
+                long totalTime = System.currentTimeMillis() - startTime;
+                if (totalTime > 10) { // 10ms 이상 걸리면 로깅
+                    log.warn("데이터 수집 작업 지연: {}ms (설정: 5ms) - 수집:{}ms",
+                            totalTime, collectionTime);
+                }
 
             } catch (Exception e) {
-                log.error("OPC UA 데이터 수집 중 오류: {}", e.getMessage(), e);
+                log.error("OPC UA 데이터 수집 중 오류: {}", e.getMessage());
             }
         }, 0, 5, TimeUnit.MILLISECONDS);
 
-        log.info("OPC UA 데이터 수집 시작됨 (500ms 간격)");
+        log.info("OPC UA 데이터 수집 시작됨 (5ms 간격)");
     }
 
     /**
@@ -561,5 +620,100 @@ public class OpcuaService {
      */
     private String formatDateTime(LocalDateTime time) {
         return time.format(DateTimeFormatter.ISO_DATE_TIME);
+    }
+
+    /**
+     * 프론트엔드로 데이터 전송 메서드
+     * 
+     * @param data 전송할 OPC UA 데이터
+     */
+    private void sendDataToFrontend(Map<String, Object> data) {
+        try {
+            if (data == null || data.isEmpty()) {
+                log.warn("전송할 데이터가 비어 있습니다");
+                return;
+            }
+
+            // 웹소켓 메시지 구성 (sendLatestDataToClient와 동일한 형식으로)
+            Map<String, Object> wsMessage = new HashMap<>();
+            wsMessage.put("type", "opcua");
+            wsMessage.put("timestamp", LocalDateTime.now().toString());
+
+            // 데이터 구조 통일 (sendLatestDataToClient와 동일한 방식으로)
+            Map<String, Object> cleanedData = new HashMap<>(data);
+
+            // 메타데이터 필드 제거 (필요시)
+            cleanedData.remove("time");
+            cleanedData.remove("_time");
+            cleanedData.remove("table");
+            cleanedData.remove("result");
+            cleanedData.remove("_start");
+            cleanedData.remove("_stop");
+            cleanedData.remove("_measurement");
+
+            // OPC_UA 키 아래에 데이터 넣기 (sendLatestDataToClient와 동일)
+            Map<String, Object> opcuaData = new HashMap<>();
+            opcuaData.put("OPC_UA", cleanedData);
+            wsMessage.put("data", opcuaData);
+
+            // 이벤트 발행 (동일하게 유지)
+            eventPublisher.publishEvent(new OpcuaDataEvent(this, wsMessage));
+            log.info("프론트엔드로 데이터 전송 완료: 필드 수={}", cleanedData.size());
+
+            // 디버깅용: 일부 필드 출력
+            if (log.isInfoEnabled() && !cleanedData.isEmpty()) {
+                int count = 0;
+                StringBuilder fields = new StringBuilder();
+                for (String key : cleanedData.keySet()) {
+                    if (count++ < 3) {
+                        fields.append(key).append(", ");
+                    } else {
+                        break;
+                    }
+                }
+                log.info("전송된 데이터 샘플 필드: {}", fields);
+            }
+        } catch (Exception e) {
+            log.error("데이터 전송 오류: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 타임스탬프가 있는 버전의 프론트엔드 데이터 전송 메서드
+     * 
+     * @param data      전송할 OPC UA 데이터
+     * @param timestamp 데이터의 타임스탬프
+     */
+    private void sendDataToFrontend(Map<String, Object> data, LocalDateTime timestamp) {
+        try {
+            if (data == null || data.isEmpty()) {
+                log.warn("전송할 데이터가 비어 있습니다");
+                return;
+            }
+
+            // 웹소켓 메시지 구성
+            Map<String, Object> wsMessage = new HashMap<>();
+            wsMessage.put("type", "opcua");
+            wsMessage.put("timestamp", timestamp.toString());
+
+            // OPC_UA 형식으로 변환
+            Map<String, Object> opcuaData = new HashMap<>();
+            opcuaData.put("OPC_UA", data);
+            wsMessage.put("data", opcuaData);
+
+            // 이벤트 발행을 통한 데이터 전송
+            eventPublisher.publishEvent(new OpcuaDataEvent(this, wsMessage));
+
+            // 로그 추가 (일부 키값 출력)
+            if (log.isDebugEnabled()) {
+                String sampleKeys = data.keySet().stream()
+                        .limit(3)
+                        .collect(Collectors.joining(", "));
+                log.debug("데이터 전송 완료: 필드 수={}, 샘플 필드=[{}]",
+                        data.size(), sampleKeys);
+            }
+        } catch (Exception e) {
+            log.error("데이터 전송 오류: {}", e.getMessage());
+        }
     }
 }
