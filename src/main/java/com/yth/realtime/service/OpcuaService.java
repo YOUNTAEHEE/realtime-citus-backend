@@ -247,6 +247,14 @@ public class OpcuaService {
      */
     private void saveToInfluxDB(Map<String, Map<String, Object>> allData, LocalDateTime timestamp) {
         try {
+            // 원본 데이터 전체 로깅
+            log.info("OPC UA 원본 데이터: {}", allData);
+
+            // 각 그룹별 데이터 상세 로깅
+            for (Map.Entry<String, Map<String, Object>> entry : allData.entrySet()) {
+                log.info("그룹: {}, 데이터: {}", entry.getKey(), entry.getValue());
+            }
+
             log.info("OPC UA 데이터 저장 시작: 시간={}, 그룹 수={}", timestamp, allData.size());
 
             // 데이터를 평탄화
@@ -377,7 +385,9 @@ public class OpcuaService {
 
                 // OPC_UA 키 아래에 평탄화된 데이터 넣기
                 Map<String, Object> opcuaData = new HashMap<>();
-                opcuaData.put("OPC_UA", cleanResult);
+                // opcuaData.put("OPC_UA", cleanResult);
+                // wsMessage.put("data", opcuaData);
+                opcuaData.putAll(cleanResult);
                 wsMessage.put("data", opcuaData);
 
                 log.info("프론트엔드로 전송할 OPC_UA 데이터: 필드 수={}", cleanResult.size());

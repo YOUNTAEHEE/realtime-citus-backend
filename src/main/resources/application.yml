@@ -48,7 +48,7 @@ logging:
     org.springframework: WARN
     com.yth.realtime: INFO
     com.influxdb.client: WARN
-    com.yth.realtime.service: OFF
+    com.yth.realtime.service: DEBUG
     org.springframework.scheduling: WARN
     com.ghgande.j2mod.modbus.io: ERROR
     com.yth.realtime.controller.WebSocketHandler: OFF
@@ -56,7 +56,7 @@ logging:
 influxdb:
   url: http://localhost:8086 # InfluxDB 서버 주소
   token: ${INFLUX_TOKEN}
-  org: youn # InfluxDB Organization 이름
+  organization: youn # InfluxDB Organization 이름
   bucket: ydata # 기본 버킷 이름
   write-timeout: 30000 # 쓰기 타임아웃 30초로 증가
   read-timeout: 30000 # 읽기 타임아웃 30초로 증가

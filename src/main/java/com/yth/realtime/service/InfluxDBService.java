@@ -31,8 +31,8 @@ public class InfluxDBService {
     @Value("${influxdb.bucket}")
     private String bucket;
 
-    @Value("${influxdb.org}")
-    private String org;
+    @Value("${influxdb.organization}")
+    private String organization;
 
     public InfluxDBService(InfluxDBClient influxDBClient) {
         this.influxDBClient = influxDBClient;
@@ -48,7 +48,7 @@ public class InfluxDBService {
 
         try {
             WriteApiBlocking writeApi = influxDBClient.getWriteApiBlocking();
-            writeApi.writePoint(bucket, org, point);
+            writeApi.writePoint(bucket, organization, point);
             log.info("데이터 저장 성공 - 장치: {}, 호스트: {}, 온도: {}°C, 습도: {}%",
                     deviceId, deviceHost, temperature, humidity);
         } catch (Exception e) {
@@ -76,7 +76,7 @@ public class InfluxDBService {
             List<Map<String, Object>> resultList = new ArrayList<>();
 
             QueryApi queryApi = influxDBClient.getQueryApi();
-            List<FluxTable> tables = queryApi.query(query, org);
+            List<FluxTable> tables = queryApi.query(query, organization);
 
             for (FluxTable table : tables) {
                 for (FluxRecord record : table.getRecords()) {
@@ -119,7 +119,7 @@ public class InfluxDBService {
             result.put("humidity", 0.0);
 
             QueryApi queryApi = influxDBClient.getQueryApi();
-            List<FluxTable> tables = queryApi.query(query, org);
+            List<FluxTable> tables = queryApi.query(query, organization);
 
             if (!tables.isEmpty() && !tables.get(0).getRecords().isEmpty()) {
                 FluxRecord record = tables.get(0).getRecords().get(0);

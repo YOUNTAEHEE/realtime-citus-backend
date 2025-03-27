@@ -20,7 +20,7 @@ public class InfluxDBConfig {
     
     private final String url = "http://localhost:8086";
     private String token;
-    private final String org = "youn";
+    private final String organization = "youn";
     private final String bucket = "ydata";
     
     private InfluxDBClient influxDBClient;
@@ -38,7 +38,7 @@ public class InfluxDBConfig {
         log.info("InfluxDB 설정 확인:");
         log.info("URL: {}", url);
         log.info("Token 존재 여부: {}", token != null && !token.isEmpty() ? "Yes" : "No");
-        log.info("Organization: {}", org);
+        log.info("Organization: {}", organization);
         log.info("Bucket: {}", bucket);
     }
     
@@ -56,7 +56,7 @@ public class InfluxDBConfig {
             try {
                 boolean ready = influxDBClient.ping();
                 if (ready) {
-                    log.info("InfluxDB 연결 성공 - URL: {}, Org: {}, Bucket: {}", url, org, bucket);
+                    log.info("InfluxDB 연결 성공 - URL: {}, Org: {}, Bucket: {}", url, organization, bucket);
                 } else {
                     log.warn("InfluxDB 연결 실패 - 서버가 응답하지 않습니다. 계속 진행합니다.");
                 }

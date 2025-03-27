@@ -34,8 +34,8 @@ public class OpcuaInfluxDBService {
     @Value("${influxdb.bucket}")
     private String bucket;
 
-    @Value("${influxdb.org}")
-    private String org;
+    @Value("${influxdb.organization}")
+    private String organization;
 
     public OpcuaInfluxDBService(InfluxDBClient influxDBClient) {
         this.influxDBClient = influxDBClient;
@@ -82,7 +82,7 @@ public class OpcuaInfluxDBService {
 
         try {
             WriteApiBlocking writeApi = influxDBClient.getWriteApiBlocking();
-            writeApi.writePoint(bucket, org, point);
+            writeApi.writePoint(bucket, organization, point);
             log.debug("OPC UA 데이터 저장 성공 - 측정: {}, 태그: {}", measurement, tags);
         } catch (Exception e) {
             log.error("OPC UA 데이터 저장 실패: {}", e.getMessage(), e);
@@ -162,7 +162,7 @@ public class OpcuaInfluxDBService {
                     measurement.getMeasurement(), timestamp);
 
             WriteApiBlocking writeApi = influxDBClient.getWriteApiBlocking();
-            writeApi.writePoint(bucket, org, point);
+            writeApi.writePoint(bucket, organization, point);
 
             log.info("InfluxDB 저장 성공: 버킷={}, 측정명={}, 필드 수={}, 시간={}",
                     bucket, measurement.getMeasurement(), fields.size(), timestamp);
@@ -184,7 +184,7 @@ public class OpcuaInfluxDBService {
         try {
             List<Map<String, Object>> resultList = new ArrayList<>();
             QueryApi queryApi = influxDBClient.getQueryApi();
-            List<FluxTable> tables = queryApi.query(query, org);
+            List<FluxTable> tables = queryApi.query(query, organization);
 
             for (FluxTable table : tables) {
                 for (FluxRecord record : table.getRecords()) {
@@ -378,7 +378,7 @@ public class OpcuaInfluxDBService {
      * @return InfluxDB 조직 이름
      */
     public String getOrg() {
-        return this.org;
+        return this.organization;
     }
 
 }

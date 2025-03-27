@@ -3,30 +3,31 @@ package com.yth.realtime.controller;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.yth.realtime.dto.HistoricalDataRequest;
+import com.yth.realtime.dto.HistoricalDataResponse;
+import com.yth.realtime.service.OpcuaHistoricalService;
 import com.yth.realtime.service.OpcuaService;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @RestController
 @RequestMapping("/api/opcua")
 @Slf4j
+@RequiredArgsConstructor
 public class OpcuaController {
 
     private final OpcuaService opcuaService;
     private final OpcuaWebSocketHandler webSocketHandler;
-    @Autowired
-    public OpcuaController(OpcuaService opcuaService, OpcuaWebSocketHandler webSocketHandler) {
-        this.opcuaService = opcuaService;
-        this.webSocketHandler = webSocketHandler;
-    }
+    private final OpcuaHistoricalService opcuaHistoricalService;
 
     @GetMapping("/status")
     public ResponseEntity<Map<String, Object>> getStatus() {
@@ -75,6 +76,7 @@ public class OpcuaController {
             return ResponseEntity.internalServerError().body("웹소켓 연결 해제 실패: " + e.getMessage());
         }
     }
+
     @PostMapping("/stop-service")
     public ResponseEntity<Map<String, Object>> stopDataCollection() {
         opcuaService.stopDataCollection();
@@ -104,5 +106,28 @@ public class OpcuaController {
         response.put("autoReconnect", enabled);
         response.put("message", enabled ? "자동 재연결이 활성화되었습니다" : "자동 재연결이 비활성화되었습니다");
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/historical")
+    public ResponseEntity<HistoricalDataResponse> getHistoricalData(@RequestBody HistoricalDataRequest request) {
+        log.warn("===== 과거 데이터 조회 요청 수신: {} =====", request);
+
+        try {
+            // 서비스 호출 직전 로그
+            log.warn("서비스 호출 직전: {}", request.getDeviceGroup());
+            HistoricalDataResponse response = opcuaHistoricalService.getHistoricalData(
+                    request.getStartTime(),
+                    request.getEndTime(),
+                    request.getDeviceGroup());
+            log.warn("서비스 호출 완료: 성공={}", response.isSuccess());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("과거 데이터 조회 중 오류 발생: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest().body(
+                    HistoricalDataResponse.builder()
+                            .success(false)
+                            .message("데이터 조회 중 오류가 발생했습니다: " + e.getMessage())
+                            .build());
+        }
     }
 }
