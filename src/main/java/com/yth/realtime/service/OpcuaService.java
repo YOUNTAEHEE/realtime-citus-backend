@@ -40,8 +40,11 @@ public class OpcuaService {
     private ScheduledFuture<?> dataCollectionTask;
     private boolean autoReconnect = true;
 
-    private final ExecutorService dbSaveExecutor = Executors.newFixedThreadPool(5);
-    private final ExecutorService dbQueryExecutor = Executors.newFixedThreadPool(5);
+    // private final ExecutorService dbSaveExecutor = Executors.newFixedThreadPool(5);
+    // private final ExecutorService dbQueryExecutor = Executors.newFixedThreadPool(5);
+// 현재 CPU 코어 수 기반으로 워크 스틸링 풀 생성
+ExecutorService dbSaveExecutor = Executors.newWorkStealingPool();
+ExecutorService dbQueryExecutor = Executors.newWorkStealingPool();
 
     @Autowired
     public OpcuaService(OpcuaClient opcuaClient, OpcuaWebSocketHandler opcuaWebSocketHandler,
