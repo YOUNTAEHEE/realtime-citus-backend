@@ -164,6 +164,65 @@ public class OpcuaService {
 
         log.info("OPC UA 데이터 수집 시작됨 (5ms 간격)");
     }
+//디비저장 조회 아님//구독
+    // public void startSubscriptionBasedCollection() {
+    //     Map<String, Map<String, Object>> currentData = new HashMap<>();
+    
+    //     opcuaClient.startSubscription((group, varName, value) -> {
+    //         synchronized (currentData) {
+    //             // 1. 기존 Map 업데이트
+    //             currentData.computeIfAbsent(group, g -> new HashMap<>()).put(varName, value);
+    
+    //             // 2. 타임스탬프 생성
+    //             LocalDateTime now = LocalDateTime.now();
+    
+    //             // 3. InfluxDB 저장 (복사본 사용)
+    //             Map<String, Map<String, Object>> dataForSave = new HashMap<>(currentData);
+    //             dbSaveExecutor.submit(() -> saveToInfluxDB(dataForSave, now));
+    
+    //             // 4. WebSocket 전송 (복사본 사용)
+    //             Map<String, Object> flatData = flattenData(dataForSave);
+    //             dbQueryExecutor.submit(() -> sendDataToFrontend(flatData));
+    
+    //             log.debug("구독 수신 → 저장 및 전송: {}.{}", group, varName);
+    //         }
+    //     });
+    
+    //     log.info("Subscription 기반 데이터 수집 시작됨");
+    // }
+    
+//디비저장조회//구독
+    // public void startSubscriptionBasedCollection() {
+    //     opcuaClient.startSubscription((group, varName, value) -> {
+    //         LocalDateTime now = LocalDateTime.now();
+    
+    //         // 수신된 값 하나로 Map 구성
+    //         Map<String, Map<String, Object>> groupWrapper = new HashMap<>();
+    //         Map<String, Object> variableMap = new HashMap<>();
+    //         variableMap.put(varName, value);
+    //         groupWrapper.put(group, variableMap);
+    
+    //         // 1. InfluxDB 저장
+    //         dbSaveExecutor.submit(() -> {
+    //             try {
+    //                 saveToInfluxDB(groupWrapper, now);
+    //                 log.debug("변수 저장 완료 → {}", varName);
+    
+    //                 // 2. 최신 데이터 InfluxDB에서 조회
+    //                 Map<String, Object> latestData = influxDBService.getLatestOpcuaData("all");
+    
+    //                 // 3. WebSocket 전송
+    //                 sendDataToFrontend(latestData);
+    //                 log.debug("프론트에 최신 데이터 전송 완료");
+    
+    //             } catch (Exception e) {
+    //                 log.error("구독 데이터 저장/전송 중 오류: {}", e.getMessage(), e);
+    //             }
+    //         });
+    //     });
+    
+    //     log.info("Subscription + 조회 기반 데이터 전송 시작됨");
+    // }
 
     /**
      * 데이터 수집 중지
@@ -308,9 +367,10 @@ public class OpcuaService {
 
     @EventListener
     public void onStartCollection(StartOpcuaCollectionEvent event) {
-        log.info("StartOpcuaCollectionEvent 수신 → connect + startDataCollection 실행");
+        // log.info("StartOpcuaCollectionEvent 수신 → connect + startDataCollection 실행");
         connect();
         startDataCollection();
+        // startSubscriptionBasedCollection(); // ✅ 구독 방식 사용
     }
 
     /**
