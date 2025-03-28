@@ -88,8 +88,14 @@ public class OpcuaHistoricalService {
 
         // 디바이스 그룹에 따른 필터 설정
         String deviceFilter = "";
+        // if (!"TOTAL".equalsIgnoreCase(deviceGroup)) {
+        //     deviceFilter = String.format(" and r[\"_field\"] =~ /%s_.*/", deviceGroup);
+        //     log.info("디바이스 그룹: {}, 쿼리 필터: {}", deviceGroup, deviceFilter);
+        // }
         if (!"total".equalsIgnoreCase(deviceGroup)) {
-            deviceFilter = String.format(" and r[\"_field\"] =~ /%s.*/i", deviceGroup);
+            // 공통 필드(Filtered_Grid_Freq)와 디바이스 그룹 필드를 모두 포함
+            deviceFilter = String.format(" and (r[\"_field\"] =~ /^%s_.*/ or r[\"_field\"] == \"Filtered_Grid_Freq\")", deviceGroup);
+            log.info("디바이스 그룹: {}, 쿼리 필터: {}", deviceGroup, deviceFilter);
         }
 
         // Flux 쿼리 작성

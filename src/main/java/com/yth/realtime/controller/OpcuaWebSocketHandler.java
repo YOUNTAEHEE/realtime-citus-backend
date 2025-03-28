@@ -20,25 +20,28 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.yth.realtime.event.OpcuaDataEvent;
+import com.yth.realtime.event.StartOpcuaCollectionEvent;
 import com.yth.realtime.service.OpcuaInfluxDBService;
-
-import lombok.RequiredArgsConstructor;
+import com.yth.realtime.service.OpcuaService;
 
 @Component
-@RequiredArgsConstructor
 public class OpcuaWebSocketHandler extends TextWebSocketHandler {
     private static final Logger log = LoggerFactory.getLogger(OpcuaWebSocketHandler.class);
-
     // 연결된 세션 목록 (스레드 안전한 리스트 사용)
     private final CopyOnWriteArrayList<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
-
-    // 서비스 주입
-    private final OpcuaInfluxDBService opcuaInfluxDBService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
+    private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher eventPublisher;
     @Autowired
-    private ApplicationEventPublisher eventPublisher; // 이 부분이 제대로 주입되었는지 확인
+    public OpcuaWebSocketHandler(ApplicationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
+        this.objectMapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
+    }
+
 
     /**
      * 웹소켓 연결 수립 시 호출되는 메서드
@@ -46,8 +49,15 @@ public class OpcuaWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
         log.info("OPC UA 웹소켓 연결 수립: {}", session.getId());
+        if (sessions.size() == 1) {
+            // opcuaService.connect();
+            // opcuaService.startDataCollection();
+            log.info("첫 번째 클라이언트 연결로 데이터 수집 시작");
+            eventPublisher.publishEvent(new StartOpcuaCollectionEvent(this));
+        }
         sessions.add(session);
-
+        // 첫 번째 클라이언트 연결 시에만 데이터 수집 시작
+        
         try {
             // 연결 확인 메시지 전송
             Map<String, Object> response = new HashMap<>();
@@ -85,13 +95,13 @@ public class OpcuaWebSocketHandler extends TextWebSocketHandler {
             String type = (String) request.get("type");
 
             switch (type) {
-                case "getHistoricalData":
-                    handleHistoricalDataRequest(session, request);
-                    break;
+                // case "getHistoricalData":
+                // handleHistoricalDataRequest(session, request);
+                // break;
 
-                case "getLiveData":
-                    handleLiveDataRequest(session, request);
-                    break;
+                // case "getLiveData":
+                //     handleLiveDataRequest(session, request);
+                //     break;
 
                 case "ping":
                     // 핑-퐁 메시지 처리
@@ -117,52 +127,58 @@ public class OpcuaWebSocketHandler extends TextWebSocketHandler {
     /**
      * 과거 데이터 요청 처리
      */
-    private void handleHistoricalDataRequest(WebSocketSession session, Map<String, Object> request) throws IOException {
-        String deviceGroup = (String) request.getOrDefault("deviceGroup", "all");
-        Integer hours = (Integer) request.getOrDefault("hours", 1);
+    // private void handleHistoricalDataRequest(WebSocketSession session,
+    // Map<String, Object> request) throws IOException {
+    // String deviceGroup = (String) request.getOrDefault("deviceGroup", "all");
+    // Integer hours = (Integer) request.getOrDefault("hours", 1);
 
-        log.info("과거 데이터 요청 처리: 장치그룹={}, 시간범위={}시간", deviceGroup, hours);
+    // log.info("과거 데이터 요청 처리: 장치그룹={}, 시간범위={}시간", deviceGroup, hours);
 
-        // InfluxDB에서 과거 데이터 조회
-        List<Map<String, Object>> historicalData = opcuaInfluxDBService.getRecentOpcuaData(deviceGroup, hours * 60);
+    // // InfluxDB에서 과거 데이터 조회
+    // List<Map<String, Object>> historicalData =
+    // opcuaInfluxDBService.getRecentOpcuaData(deviceGroup, hours * 60);
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("type", "historicalData");
+    // Map<String, Object> response = new HashMap<>();
+    // response.put("type", "historicalData");
 
-        // 중요 변경: 클라이언트가 기대하는 구조로 변경
-        Map<String, Object> dataContainer = new HashMap<>();
-        dataContainer.put("timeSeries", historicalData); // 데이터를 timeSeries 키로 감싸기
-        response.put("data", dataContainer);
+    // // 중요 변경: 클라이언트가 기대하는 구조로 변경
+    // Map<String, Object> dataContainer = new HashMap<>();
+    // dataContainer.put("timeSeries", historicalData); // 데이터를 timeSeries 키로 감싸기
+    // response.put("data", dataContainer);
 
-        response.put("deviceGroup", deviceGroup);
-        response.put("period", hours + "h");
-        response.put("count", historicalData.size());
+    // response.put("deviceGroup", deviceGroup);
+    // response.put("period", hours + "h");
+    // response.put("count", historicalData.size());
 
-        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
-        log.info("과거 데이터 전송 완료: 장치={}, 기간={}시간, 데이터 수={}",
-                deviceGroup, hours, historicalData.size());
-    }
+    // session.sendMessage(new
+    // TextMessage(objectMapper.writeValueAsString(response)));
+    // log.info("과거 데이터 전송 완료: 장치={}, 기간={}시간, 데이터 수={}",
+    // deviceGroup, hours, historicalData.size());
+    // }
 
     /**
      * 실시간 데이터 요청 처리
      */
-    private void handleLiveDataRequest(WebSocketSession session, Map<String, Object> request) throws IOException {
-        String deviceGroup = (String) request.getOrDefault("deviceGroup", "all");
+    // private void handleLiveDataRequest(WebSocketSession session, Map<String,
+    // Object> request) throws IOException {
+    // String deviceGroup = (String) request.getOrDefault("deviceGroup", "all");
 
-        log.info("실시간 데이터 요청 처리: 장치그룹={}", deviceGroup);
+    // log.info("실시간 데이터 요청 처리: 장치그룹={}", deviceGroup);
 
-        // 최신 데이터 조회
-        Map<String, Object> latestData = opcuaInfluxDBService.getLatestOpcuaData(deviceGroup);
+    // // 최신 데이터 조회
+    // Map<String, Object> latestData =
+    // opcuaInfluxDBService.getLatestOpcuaData(deviceGroup);
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("type", "liveData");
-        response.put("deviceGroup", deviceGroup);
-        response.put("timestamp", LocalDateTime.now().toString());
-        response.put("data", latestData);
+    // Map<String, Object> response = new HashMap<>();
+    // response.put("type", "liveData");
+    // response.put("deviceGroup", deviceGroup);
+    // response.put("timestamp", LocalDateTime.now().toString());
+    // response.put("data", latestData);
 
-        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
-        log.debug("실시간 데이터 전송 완료: 장치={}", deviceGroup);
-    }
+    // session.sendMessage(new
+    // TextMessage(objectMapper.writeValueAsString(response)));
+    // log.debug("실시간 데이터 전송 완료: 장치={}", deviceGroup);
+    // }
 
     /**
      * 모든 연결된 클라이언트에 OPC UA 데이터 전송
@@ -210,43 +226,44 @@ public class OpcuaWebSocketHandler extends TextWebSocketHandler {
     /**
      * 모든 연결된 클라이언트에 OPC UA 과거 데이터 전송
      */
-    public void sendOpcuaHistoricalData(Map<String, Object> data) {
-        if (sessions.isEmpty()) {
-            return;
-        }
+    // public void sendOpcuaHistoricalData(Map<String, Object> data) {
+    // if (sessions.isEmpty()) {
+    // return;
+    // }
 
-        try {
-            String jsonData = objectMapper.writeValueAsString(data);
-            TextMessage message = new TextMessage(jsonData);
+    // try {
+    // String jsonData = objectMapper.writeValueAsString(data);
+    // TextMessage message = new TextMessage(jsonData);
 
-            List<WebSocketSession> invalidSessions = new ArrayList<>();
-            int successCount = 0;
+    // List<WebSocketSession> invalidSessions = new ArrayList<>();
+    // int successCount = 0;
 
-            for (WebSocketSession session : sessions) {
-                if (session.isOpen()) {
-                    try {
-                        session.sendMessage(message);
-                        successCount++;
-                    } catch (Exception e) {
-                        log.error("OPC UA 과거 데이터 전송 실패 (세션 ID: {}): {}", session.getId(), e.getMessage());
-                        invalidSessions.add(session);
-                    }
-                } else {
-                    invalidSessions.add(session);
-                }
-            }
+    // for (WebSocketSession session : sessions) {
+    // if (session.isOpen()) {
+    // try {
+    // session.sendMessage(message);
+    // successCount++;
+    // } catch (Exception e) {
+    // log.error("OPC UA 과거 데이터 전송 실패 (세션 ID: {}): {}", session.getId(),
+    // e.getMessage());
+    // invalidSessions.add(session);
+    // }
+    // } else {
+    // invalidSessions.add(session);
+    // }
+    // }
 
-            // 닫힌 세션 제거
-            sessions.removeAll(invalidSessions);
+    // // 닫힌 세션 제거
+    // sessions.removeAll(invalidSessions);
 
-            if (successCount > 0) {
-                log.info("OPC UA 과거 데이터 전송 성공: {}개 세션", successCount);
-            }
+    // if (successCount > 0) {
+    // log.info("OPC UA 과거 데이터 전송 성공: {}개 세션", successCount);
+    // }
 
-        } catch (Exception e) {
-            log.error("OPC UA 과거 데이터 전송 중 오류: {}", e.getMessage(), e);
-        }
-    }
+    // } catch (Exception e) {
+    // log.error("OPC UA 과거 데이터 전송 중 오류: {}", e.getMessage(), e);
+    // }
+    // }
 
     /**
      * 웹소켓 에러 처리
@@ -271,19 +288,22 @@ public class OpcuaWebSocketHandler extends TextWebSocketHandler {
         sendOpcuaData(data);
     }
 
+
+    
     // 이벤트 발행 부분
-    private void processOpcuaData(Map<String, Map<String, Object>> allData, LocalDateTime timestamp) {
-        // ...처리 로직...
+    // private void processOpcuaData(Map<String, Map<String, Object>> allData,
+    // LocalDateTime timestamp) {
+    // // ...처리 로직...
 
-        Map<String, Object> message = new HashMap<>();
-        message.put("type", "opcua");
-        message.put("timestamp", timestamp.toString());
-        message.put("data", allData);
+    // Map<String, Object> message = new HashMap<>();
+    // message.put("type", "opcua");
+    // message.put("timestamp", timestamp.toString());
+    // message.put("data", allData);
 
-        // 이 부분이 제대로 호출되는지 로그로 확인
-        System.out.println("이벤트 발행: " + message);
-        eventPublisher.publishEvent(new OpcuaDataEvent(this, message));
-    }
+    // // 이 부분이 제대로 호출되는지 로그로 확인
+    // System.out.println("이벤트 발행: " + message);
+    // eventPublisher.publishEvent(new OpcuaDataEvent(this, message));
+    // }
 
     /**
      * 모든 OPC UA 웹소켓 세션을 정리하는 메서드
