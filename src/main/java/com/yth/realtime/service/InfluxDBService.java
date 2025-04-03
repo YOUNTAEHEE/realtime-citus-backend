@@ -18,6 +18,7 @@ import com.influxdb.client.QueryApi;
 import com.influxdb.client.WriteApiBlocking;
 import com.influxdb.client.domain.WritePrecision;
 import com.influxdb.client.write.Point;
+import com.influxdb.exceptions.InfluxException;
 import com.influxdb.query.FluxRecord;
 import com.influxdb.query.FluxTable;
 
@@ -53,6 +54,30 @@ public class InfluxDBService {
                     deviceId, deviceHost, temperature, humidity);
         } catch (Exception e) {
             log.error("데이터 저장 실패: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 여러 데이터 포인트를 InfluxDB에 배치로 저장합니다.
+     *
+     * @param points 저장할 Point 객체 리스트
+     */
+    public void savePoints(List<Point> points) {
+        if (points == null || points.isEmpty()) {
+            log.warn("저장할 데이터 포인트가 없습니다.");
+            return;
+        }
+
+        try {
+            WriteApiBlocking writeApi = influxDBClient.getWriteApiBlocking();
+            writeApi.writePoints(bucket, organization, points);
+            log.info("InfluxDB 배치 쓰기 성공: {} 개의 포인트 저장", points.size());
+        } catch (InfluxException e) {
+            log.error("InfluxDB 배치 쓰기 실패: {} - 상태 코드: {}, 메시지: {}",
+                    points.size(), e.status(), e.getMessage(), e);
+        } catch (Exception e) {
+            log.error("InfluxDB 배치 쓰기 중 예상치 못한 오류 발생: {} points - {}",
+                    points.size(), e.getMessage(), e);
         }
     }
 

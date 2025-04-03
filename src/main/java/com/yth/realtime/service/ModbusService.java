@@ -1,25 +1,36 @@
 package com.yth.realtime.service;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.ghgande.j2mod.modbus.facade.ModbusTCPMaster;
 import com.ghgande.j2mod.modbus.procimg.Register;
+import com.influxdb.client.domain.WritePrecision;
+import com.influxdb.client.write.Point;
 import com.yth.realtime.dto.ModbusDevice;
 import com.yth.realtime.dto.SettingsDTO;
 import com.yth.realtime.entity.ModbusDeviceDocument;
@@ -50,6 +61,9 @@ public class ModbusService {
     // ApplicationEventPublisher 추가 (이벤트 기반 통신 위해)
     private final ApplicationEventPublisher eventPublisher;
 
+    // pointQueue 필드 선언 추가
+    private final BlockingQueue<Point> pointQueue = new LinkedBlockingQueue<>();
+
     public ModbusService(InfluxDBService influxDBService,
             ModbusDeviceRepository modbusDeviceRepository,
             SettingsRepository settingsRepository,
@@ -71,6 +85,171 @@ public class ModbusService {
     // log.error("ModbusService 초기화 실패: {}", e.getMessage(), e);
     // }
     // }
+
+    @Scheduled(fixedRate = 1000) // 1초마다 실행
+    public void repeatCsvInsert() {
+        startCsvBatchInsertAndQueue();
+    }
+
+    public void startCsvBatchInsertAndQueue() {
+        String csvFilePath = "C:/Users/CITUS/Desktop/modbusdata/temperature_humidity_stats_5434.csv";
+        AtomicInteger totalPointsQueued = new AtomicInteger(0);
+
+        // log.info("CSV 파일 로딩 및 데이터 큐잉 시작: {}", csvFilePath);
+        long startTime = System.currentTimeMillis();
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(csvFilePath))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                totalPointsQueued.incrementAndGet();
+                String trimmedLine = line.trim();
+
+                // 헤더, 메타데이터, 빈 줄 필터링 (필요 시 조건 수정)
+                if (trimmedLine.startsWith("#") || trimmedLine.isEmpty()
+                        || trimmedLine.startsWith("result,table,_value")) {
+                    continue;
+                }
+
+                try {
+                    // 원본 행과 클린된 행 로깅 (디버깅용)
+                    String cleanedLine = trimmedLine.replaceAll("^,+", "");
+                    // log.debug("원본 행: [{}], 클린된 행: [{}]", trimmedLine, cleanedLine);
+                    String[] row = cleanedLine.split(",");
+
+                    // CSV 파일의 구조에 맞게 조건을 확인
+                    if (row.length >= 2) { // 여기서 최소 컬럼 수가 실제 데이터에 맞는지 확인
+                        double temperatureMin = Double.parseDouble(row[0].trim());
+                        double temperatureMax = Double.parseDouble(row[1].trim());
+                        double temperatureAvg = Double.parseDouble(row[2].trim());
+                        double humidityMin = Double.parseDouble(row[3].trim());
+                        double humidityMax = Double.parseDouble(row[4].trim());
+                        double humidityAvg = Double.parseDouble(row[5].trim());
+                        String temperatureMinDevice = row[6].trim();
+                        String temperatureMaxDevice = row[7].trim();
+                        String temperatureAvgDevice = row[8].trim();
+                        String humidityMinDevice = row[9].trim();
+                        String humidityMaxDevice = row[10].trim();
+                        String humidityAvgDevice = row[11].trim();
+
+                        String deviceId = "CsvTestDevice";
+                        String host = "CsvTestHost";
+                        String measurement = "sensor_data_csv_test";
+
+                        Point point = Point.measurement(measurement)
+                                .addField("temperature_min", temperatureMin)
+                                .addField("temperature_max", temperatureMax)
+                                .addField("temperature_avg", temperatureAvg)
+                                .addField("humidity_min", humidityMin)
+                                .addField("humidity_max", humidityMax)
+                                .addField("humidity_avg", humidityAvg)
+                                .addTag("temperature_min_device", temperatureMinDevice)
+                                .addTag("temperature_max_device", temperatureMaxDevice)
+                                .addTag("temperature_avg_device", temperatureAvgDevice)
+                                .addTag("humidity_min_device", humidityMinDevice)
+                                .addTag("humidity_max_device", humidityMaxDevice)
+                                .addTag("humidity_avg_device", humidityAvgDevice)
+                                .time(Instant.now(), WritePrecision.MS);
+
+                        pointQueue.put(point);
+                        // totalPointsQueued.incrementAndGet();
+                    } else {
+                        log.warn("CSV 행의 열 개수가 예상과 다름 (2개 이상 예상): {}", trimmedLine);
+                    }
+                } catch (NumberFormatException e) {
+                    log.warn("숫자 변환 실패 (행 무시): {} - {}", trimmedLine, e.getMessage());
+                } catch (ArrayIndexOutOfBoundsException e) {
+                    log.warn("CSV 행 처리 중 인덱스 오류 발생 (행 무시): {} - {}", trimmedLine, e.getMessage());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.error("데이터 큐잉 중 인터럽트 발생", e);
+                    break;
+                } catch (Exception e) {
+                    log.warn("CSV 행 처리 중 오류 발생 (행 무시): {} - {}", trimmedLine, e.getMessage());
+                }
+            }
+        } catch (IOException e) {
+            log.error("CSV 파일 읽기 실패: {}", e.getMessage(), e);
+            return;
+        } catch (Exception e) {
+            log.error("CSV 데이터 처리 중 예외 발생: {}", e.getMessage(), e);
+        }
+
+        long endTime = System.currentTimeMillis();
+        int queuedCount = totalPointsQueued.get();
+        log.info("CSV 파일 로딩 및 큐잉 완료. 총 {} 포인트 큐에 추가됨. 소요 시간: {} ms",
+                queuedCount, (endTime - startTime));
+
+        // --- 큐에 있는 모든 데이터를 한 번에 처리 ---
+        if (queuedCount > 0) {
+            processEntireQueue(); // 큐 처리 메서드 호출
+        } else {
+            log.warn("큐에 추가된 데이터가 없어 DB 저장 작업을 건너니다.");
+        }
+    }
+
+    // 큐의 모든 데이터를 한 번에 DB에 저장 시도하는 메서드
+    private void processEntireQueue() {
+        List<Point> batchToSave = new ArrayList<>();
+        pointQueue.drainTo(batchToSave); // 큐의 모든 요소 가져오기
+
+        if (!batchToSave.isEmpty()) {
+            log.warn("!!! 경고: 큐의 모든 데이터 {}개를 한 번의 배치로 저장 시도합니다. (매우 위험!) !!!", batchToSave.size());
+            try {
+                influxDBService.savePoints(batchToSave);
+                // 성공 로그는 InfluxDBService에서 출력될 것임
+            } catch (Exception e) {
+                log.error("!!! 전체 큐 데이터 처리 중 InfluxDB 저장 실패. {}개의 포인트 유실 가능성. !!!", batchToSave.size(), e);
+                // 여기에서 실패 시 어떻게 할지 결정해야 함 (예: 로그만 남기기, 재시도 불가)
+            }
+        } else {
+            log.info("처리할 큐 데이터가 없습니다.");
+        }
+    }
+
+    // 기존 processQueue 메서드는 이제 사용되지 않으므로 주석 처리 또는 삭제
+    /*
+     * @Scheduled(fixedDelay = 10) // 이전 버전
+     * public void processQueue() { ... }
+     */
+
+    // 애플리케이션 종료 시 스레드 풀 및 남은 큐 데이터 처리
+    @PreDestroy
+    public void cleanupQueueOnShutdown() {
+        log.info("애플리케이션 종료 전 남은 큐 데이터 확인...");
+        if (!pointQueue.isEmpty()) {
+            // 애플리케이션 종료 시점에는 이미 processEntireQueue가 호출되었을 가능성이 높음
+            // 하지만 만약의 경우를 대비해 로그만 남기거나, 간단한 처리 시도
+            log.warn("애플리케이션 종료 시점에 큐에 아직 {}개의 포인트가 남아있습니다. (처리 시도 안 함)", pointQueue.size());
+            // List<Point> remainingPoints = new ArrayList<>();
+            // pointQueue.drainTo(remainingPoints);
+            // try { influxDBService.savePoints(remainingPoints); } catch (Exception e) {
+            // ... }
+        } else {
+            log.info("종료 시점에 큐가 비어있습니다.");
+        }
+        // 기존 다른 cleanup 로직 호출 (예: Modbus 연결 해제 등)
+        cleanupModbusConnections(); // 별도 메서드라고 가정
+    }
+
+    // Modbus 연결 해제 등 다른 cleanup 로직을 위한 메서드 (예시)
+    private void cleanupModbusConnections() {
+        log.info("Modbus 연결 정리 시작...");
+        modbusMasters.forEach((deviceId, master) -> {
+            try {
+                if (master != null && master.isConnected()) { // 연결 상태 확인 추가
+                    master.disconnect();
+                    log.info("Modbus 연결 해제 성공: {}", deviceId);
+                }
+            } catch (Exception e) {
+                log.error("Modbus 연결 해제 실패: {}", deviceId, e);
+            }
+        });
+        modbusMasters.clear();
+        lastDataSaveTime.clear(); // 관련 있다면 이것도 정리
+        registeredDevices.clear(); // 관련 있다면 이것도 정리
+        log.info("Modbus 연결 정리 완료.");
+    }
+    // 테스트 코드 끝
 
     /**
      * 장치를 등록하는 메서드
