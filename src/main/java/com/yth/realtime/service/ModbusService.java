@@ -86,13 +86,18 @@ public class ModbusService {
     // }
     // }
 
-    @Scheduled(fixedRate = 1000) // 1초마다 실행
-    public void repeatCsvInsert() {
-        startCsvBatchInsertAndQueue();
-    }
+    // 테스트 코드 추가
+    // @PostConstruct
+    // public void runCsvTest() {
+    // startCsvBatchInsertAndQueue();
+    // }
+    // @Scheduled(fixedRate = 1000) // 1초마다 실행
+    // public void repeatCsvInsert() {
+    //     startCsvBatchInsertAndQueue();
+    // }
 
     public void startCsvBatchInsertAndQueue() {
-        String csvFilePath = "C:/Users/CITUS/Desktop/modbusdata/temperature_humidity_stats_5434.csv";
+        String csvFilePath = "C:/Users/CITUS/Desktop/modbusdata/rack_module_cell_temp_humidity_stats.csv";
         AtomicInteger totalPointsQueued = new AtomicInteger(0);
 
         // log.info("CSV 파일 로딩 및 데이터 큐잉 시작: {}", csvFilePath);
@@ -117,25 +122,37 @@ public class ModbusService {
                     String[] row = cleanedLine.split(",");
 
                     // CSV 파일의 구조에 맞게 조건을 확인
-                    if (row.length >= 2) { // 여기서 최소 컬럼 수가 실제 데이터에 맞는지 확인
-                        double temperatureMin = Double.parseDouble(row[0].trim());
-                        double temperatureMax = Double.parseDouble(row[1].trim());
-                        double temperatureAvg = Double.parseDouble(row[2].trim());
-                        double humidityMin = Double.parseDouble(row[3].trim());
-                        double humidityMax = Double.parseDouble(row[4].trim());
-                        double humidityAvg = Double.parseDouble(row[5].trim());
-                        String temperatureMinDevice = row[6].trim();
-                        String temperatureMaxDevice = row[7].trim();
-                        String temperatureAvgDevice = row[8].trim();
-                        String humidityMinDevice = row[9].trim();
-                        String humidityMaxDevice = row[10].trim();
-                        String humidityAvgDevice = row[11].trim();
+                    if (row.length >= 15) { // 최소 컬럼 수를 15개로 변경 (ID 3개 + 값 6개 + 디바이스 ID 6개)
+                        // === 추가 시작 ===
+                        String rackId = row[0].trim();
+                        String moduleId = row[1].trim();
+                        String cellId = row[2].trim();
+                        // === 추가 끝 ===
+
+                        // 인덱스 조정 (기존 인덱스 + 3)
+                        double temperatureMin = Double.parseDouble(row[3].trim()); // 0 -> 3
+                        double temperatureMax = Double.parseDouble(row[4].trim()); // 1 -> 4
+                        double temperatureAvg = Double.parseDouble(row[5].trim()); // 2 -> 5
+                        double humidityMin = Double.parseDouble(row[6].trim()); // 3 -> 6
+                        double humidityMax = Double.parseDouble(row[7].trim()); // 4 -> 7
+                        double humidityAvg = Double.parseDouble(row[8].trim()); // 5 -> 8
+                        String temperatureMinDevice = row[9].trim(); // 6 -> 9
+                        String temperatureMaxDevice = row[10].trim(); // 7 -> 10
+                        String temperatureAvgDevice = row[11].trim(); // 8 -> 11
+                        String humidityMinDevice = row[12].trim(); // 9 -> 12
+                        String humidityMaxDevice = row[13].trim(); // 10 -> 13
+                        String humidityAvgDevice = row[14].trim(); // 11 -> 14
 
                         String deviceId = "CsvTestDevice";
                         String host = "CsvTestHost";
-                        String measurement = "sensor_data_csv_test";
+                        String measurement = "sensor_data_csv_test"; // 필요 시 measurement 이름 변경 고려
 
                         Point point = Point.measurement(measurement)
+                                // === 추가 시작 ===
+                                .addTag("rack_id", rackId)
+                                .addTag("module_id", moduleId)
+                                .addTag("cell_id", cellId)
+                                // === 추가 끝 ===
                                 .addField("temperature_min", temperatureMin)
                                 .addField("temperature_max", temperatureMax)
                                 .addField("temperature_avg", temperatureAvg)
@@ -153,7 +170,7 @@ public class ModbusService {
                         pointQueue.put(point);
                         // totalPointsQueued.incrementAndGet();
                     } else {
-                        log.warn("CSV 행의 열 개수가 예상과 다름 (2개 이상 예상): {}", trimmedLine);
+                        log.warn("CSV 행의 열 개수가 예상과 다름 (15개 이상 예상): {}", trimmedLine); // 경고 메시지 업데이트
                     }
                 } catch (NumberFormatException e) {
                     log.warn("숫자 변환 실패 (행 무시): {} - {}", trimmedLine, e.getMessage());
