@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,7 +27,7 @@ import com.influxdb.query.FluxTable;
 @Transactional
 public class InfluxDBService {
     private static final Logger log = LoggerFactory.getLogger(InfluxDBService.class);
-
+    private final AtomicLong influxSaveCounter = new AtomicLong(0);
     private final InfluxDBClient influxDBClient;
 
     @Value("${influxdb.bucket}")
@@ -63,7 +64,10 @@ public class InfluxDBService {
      * @param points 저장할 Point 객체 리스트
      */
     public void savePoints(List<Point> points) {
-        if (points == null || points.isEmpty()) {
+        // === 추가: 카운터 증가 및 로그 출력 ===
+        long currentCount = influxSaveCounter.incrementAndGet();
+        int pointCount = (points != null) ? points.size() : 0; // Null 체크 추가
+        if (pointCount == 0) { // 수정: pointCount 사용
             log.warn("저장할 데이터 포인트가 없습니다.");
             return;
         }
@@ -71,13 +75,18 @@ public class InfluxDBService {
         try {
             WriteApiBlocking writeApi = influxDBClient.getWriteApiBlocking();
             writeApi.writePoints(bucket, organization, points);
-            log.info("InfluxDB 배치 쓰기 성공: {} 개의 포인트 저장", points.size());
+            // log.info("InfluxDB 배치 쓰기 성공: {} 개의 포인트 저장", points.size());
+            log.info("InfluxDB 배치 쓰기 성공: {} 개의 포인트 저장 완료 (시도 #{})", pointCount, currentCount); // 성공 로그에도 횟수 추가
         } catch (InfluxException e) {
-            log.error("InfluxDB 배치 쓰기 실패: {} - 상태 코드: {}, 메시지: {}",
-                    points.size(), e.status(), e.getMessage(), e);
+            // log.error("InfluxDB 배치 쓰기 실패: {} - 상태 코드: {}, 메시지: {}",
+            // points.size(), e.status(), e.getMessage(), e);
+            log.error("InfluxDB 배치 쓰기 실패 (시도 #{}, {} points): {} - 상태 코드: {}, 메시지: {}",
+                    currentCount, pointCount, e.status(), e.getMessage(), e); // 실패 로그에도 횟수 추가
         } catch (Exception e) {
-            log.error("InfluxDB 배치 쓰기 중 예상치 못한 오류 발생: {} points - {}",
-                    points.size(), e.getMessage(), e);
+            // log.error("InfluxDB 배치 쓰기 중 예상치 못한 오류 발생: {} points - {}",
+            // points.size(), e.getMessage(), e);
+            log.error("InfluxDB 배치 쓰기 중 예상치 못한 오류 발생 (시도 #{}, {} points): {}",
+                    currentCount, pointCount, e.getMessage(), e); // 실패 로그에도 횟수 추가
         }
     }
 

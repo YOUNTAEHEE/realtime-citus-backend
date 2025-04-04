@@ -18,11 +18,13 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,12 +41,14 @@ import com.yth.realtime.event.HistoricalDataEvent;
 import com.yth.realtime.repository.ModbusDeviceRepository;
 import com.yth.realtime.repository.SettingsRepository;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
 @Transactional
 @Slf4j
+@EnableScheduling
 public class ModbusService {
     private static final Logger log = LoggerFactory.getLogger(ModbusService.class);
     private final InfluxDBService influxDBService;
@@ -60,7 +64,8 @@ public class ModbusService {
 
     // ApplicationEventPublisher 추가 (이벤트 기반 통신 위해)
     private final ApplicationEventPublisher eventPublisher;
-
+    // === 추가: CSV 삽입 시도 횟수 카운터 ===
+    private final AtomicLong csvInsertCounter = new AtomicLong(0);
     // pointQueue 필드 선언 추가
     private final BlockingQueue<Point> pointQueue = new LinkedBlockingQueue<>();
 
@@ -91,13 +96,16 @@ public class ModbusService {
     // public void runCsvTest() {
     // startCsvBatchInsertAndQueue();
     // }
-    // @Scheduled(fixedRate = 1000) // 1초마다 실행
-    // public void repeatCsvInsert() {
-    //     startCsvBatchInsertAndQueue();
-    // }
+    @Scheduled(fixedRate = 1000) // 1초마다 실행
+    public void repeatCsvInsert() {
+        long currentCount = csvInsertCounter.incrementAndGet();
+        log.info("CSV 데이터 삽입 시도 #{}", currentCount);
+        startCsvBatchInsertAndQueue();
+
+    }
 
     public void startCsvBatchInsertAndQueue() {
-        String csvFilePath = "C:/Users/CITUS/Desktop/modbusdata/rack_module_cell_temp_humidity_stats.csv";
+        String csvFilePath = "C:/Users/CITUS/Desktop/modbusdata/all_racks_combined.csv";
         AtomicInteger totalPointsQueued = new AtomicInteger(0);
 
         // log.info("CSV 파일 로딩 및 데이터 큐잉 시작: {}", csvFilePath);
@@ -109,11 +117,13 @@ public class ModbusService {
                 totalPointsQueued.incrementAndGet();
                 String trimmedLine = line.trim();
 
-                // 헤더, 메타데이터, 빈 줄 필터링 (필요 시 조건 수정)
-                if (trimmedLine.startsWith("#") || trimmedLine.isEmpty()
-                        || trimmedLine.startsWith("result,table,_value")) {
-                    continue;
+                // === 추가: 헤더 행 건너뛰기 ===
+                // CSV 파일의 실제 헤더 내용과 정확히 일치하는지 확인 필요
+                if (trimmedLine.startsWith("rack_id,module_id,cell_id")) {
+                    log.debug("CSV 헤더 행 건너뜁니다: {}", trimmedLine);
+                    continue; // 다음 줄 처리로 넘어감
                 }
+                // === 추가 끝 ===
 
                 try {
                     // 원본 행과 클린된 행 로깅 (디버깅용)
@@ -145,7 +155,7 @@ public class ModbusService {
 
                         String deviceId = "CsvTestDevice";
                         String host = "CsvTestHost";
-                        String measurement = "sensor_data_csv_test"; // 필요 시 measurement 이름 변경 고려
+                        String measurement = "sensor_data_csv_test3"; // 필요 시 measurement 이름 변경 고려
 
                         Point point = Point.measurement(measurement)
                                 // === 추가 시작 ===
