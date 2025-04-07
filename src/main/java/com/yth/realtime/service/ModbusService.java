@@ -93,31 +93,22 @@ public class ModbusService {
     // 테스트 코드 추가
     // @PostConstruct
     // public void runCsvTest() {
-    // long currentCount = csvInsertCounter.incrementAndGet();
-    // startCsvBatchInsertAndQueue(currentCount);
+    // startCsvBatchInsertAndQueue();
     // }
-    @Scheduled(fixedRate = 1000) // 1초마다 실행
-    public void repeatCsvInsert() {
-        long currentCount = csvInsertCounter.incrementAndGet();
-        log.info("CSV 데이터 삽입 시도 #{}", currentCount);
-        startCsvBatchInsertAndQueue(currentCount);
+    // @Scheduled(fixedRate = 1000) // 1초마다 실행
+    // public void repeatCsvInsert() {
+    //     long currentCount = csvInsertCounter.incrementAndGet();
+    //     log.info("CSV 데이터 삽입 시도 #{}", currentCount);
+    //     startCsvBatchInsertAndQueue();
 
-    }
+    // }
 
-    public void startCsvBatchInsertAndQueue(long attemptCount) {
+    public void startCsvBatchInsertAndQueue() {
         String csvFilePath = "C:/Users/CITUS/Desktop/modbusdata/all_racks_combined.csv";
-        long startTime = System.currentTimeMillis();
-
-        // 나눠서 코드
-        long processStartTime = System.currentTimeMillis();
-        int totalLinesRead = 0;
-        int totalPointsSaved = 0;
-        final int BATCH_SIZE = 5016; // 배치 크기
-        List<Point> currentBatch = new ArrayList<>(BATCH_SIZE);
-        // 나눠서코드끝
         AtomicInteger totalPointsQueued = new AtomicInteger(0);
 
         // log.info("CSV 파일 로딩 및 데이터 큐잉 시작: {}", csvFilePath);
+        long startTime = System.currentTimeMillis();
 
         try (BufferedReader reader = new BufferedReader(new FileReader(csvFilePath))) {
             String line;
@@ -163,7 +154,7 @@ public class ModbusService {
 
                         String deviceId = "CsvTestDevice";
                         String host = "CsvTestHost";
-                        String measurement = "sensor_data_csv_test7"; // 필요 시 measurement 이름 변경 고려
+                        String measurement = "sensor_data_csv_test10"; // 필요 시 measurement 이름 변경 고려
 
                         Point point = Point.measurement(measurement)
                                 // === 추가 시작 ===
@@ -185,88 +176,61 @@ public class ModbusService {
                                 .addTag("humidity_avg_device", humidityAvgDevice)
                                 .time(Instant.now(), WritePrecision.MS);
 
-                        // pointQueue.put(point);//한번에 코드
-                        // 배치 리스트에 추가
-                        currentBatch.add(point);// 나눠서 코드
-                        // 배치가 꽉 차면 저장
-                        if (currentBatch.size() >= BATCH_SIZE) {
-                            log.debug("배치 크기 ({}) 도달, DB 저장 시작 (시도 #{})", BATCH_SIZE, attemptCount);
-                            try {
-                                influxDBService.savePoints(new ArrayList<>(currentBatch)); // 방어적 복사본 전달
-                                totalPointsSaved += currentBatch.size();
-                            } catch (Exception e) {
-                                // 배치 저장 실패 시 로그 강화
-                                log.error("!!! InfluxDB 배치 저장 실패 (시도 #{}, 배치 크기 {}). 데이터 유실 가능성 !!!",
-                                        attemptCount, currentBatch.size(), e);
-                            } finally {
-                                currentBatch.clear(); // 성공/실패 여부와 관계없이 배치는 비움 (유실 감수)
-                            }
-                        } // 나눠서코드
+                        pointQueue.put(point);
+                        // totalPointsQueued.incrementAndGet();
                     } else {
-                        log.warn("CSV 행 열 개수 부족 ({}개) (행 #{}, 내용: {})", row.length, totalLinesRead, trimmedLine);
+                        log.warn("CSV 행의 열 개수가 예상과 다름 (15개 이상 예상): {}", trimmedLine); // 경고 메시지 업데이트
                     }
                 } catch (NumberFormatException e) {
-                    log.warn("숫자 변환 실패 (행 #{}, 내용: {}): {}", totalLinesRead, trimmedLine, e.getMessage());
+                    log.warn("숫자 변환 실패 (행 무시): {} - {}", trimmedLine, e.getMessage());
                 } catch (ArrayIndexOutOfBoundsException e) {
-                    log.warn("CSV 인덱스 오류 (행 #{}, 내용: {}): {}", totalLinesRead, trimmedLine, e.getMessage());
-                } catch (Exception e) { // 다른 예외 처리
-                    log.error("CSV 행 처리 중 오류 (행 #{}, 내용: {}): {}", totalLinesRead, trimmedLine, e.getMessage(), e);
-                }
-            } // end while
-
-            // 루프 종료 후 남은 배치 저장
-            if (!currentBatch.isEmpty()) {
-                log.debug("마지막 남은 배치 ({}) DB 저장 시작 (시도 #{})", currentBatch.size(), attemptCount);
-                try {
-                    influxDBService.savePoints(new ArrayList<>(currentBatch)); // 방어적 복사본 전달
-                    totalPointsSaved += currentBatch.size();
+                    log.warn("CSV 행 처리 중 인덱스 오류 발생 (행 무시): {} - {}", trimmedLine, e.getMessage());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.error("데이터 큐잉 중 인터럽트 발생", e);
+                    break;
                 } catch (Exception e) {
-                    log.error("!!! InfluxDB 마지막 배치 저장 실패 (시도 #{}, 배치 크기 {}). 데이터 유실 가능성 !!!",
-                            attemptCount, currentBatch.size(), e);
-                } finally {
-                    currentBatch.clear();
+                    log.warn("CSV 행 처리 중 오류 발생 (행 무시): {} - {}", trimmedLine, e.getMessage());
                 }
             }
-
         } catch (IOException e) {
-            log.error("CSV 파일 읽기 실패 ({}): {}", csvFilePath, e.getMessage(), e);
-            return; // 파일 읽기 실패 시 현재 시도 중단
+            log.error("CSV 파일 읽기 실패: {}", e.getMessage(), e);
+            return;
         } catch (Exception e) {
-            log.error("CSV 처리 중 예기치 않은 오류 발생 (시도 #{})", attemptCount, e);
-        } finally {
-            long processEndTime = System.currentTimeMillis();
-            long duration = processEndTime - processStartTime;
-            log.info("CSV 파일 처리 완료 (시도 #{}) - 총 읽은 줄: {}, 저장된 포인트: {}. 소요 시간: {} ms",
-                    attemptCount, totalLinesRead, totalPointsSaved, duration);
-            // === 1초 목표 달성 여부 확인 ===
-            if (duration <= 1000) {
-                log.info(">>>> 성공: CSV 처리 및 저장 작업이 1초 안에 완료되었습니다! (시도 #{})", attemptCount);
-            } else {
-                log.warn("<<<< 경고: CSV 처리 및 저장 작업이 1초를 초과했습니다. ({} ms 소요, 시도 #{})", duration, attemptCount);
-            }
+            log.error("CSV 데이터 처리 중 예외 발생: {}", e.getMessage(), e);
+        }
+
+        long endTime = System.currentTimeMillis();
+        int queuedCount = totalPointsQueued.get();
+        log.info("CSV 파일 로딩 및 큐잉 완료. 총 {} 포인트 큐에 추가됨. 소요 시간: {} ms",
+                queuedCount, (endTime - startTime));
+
+        // --- 큐에 있는 모든 데이터를 한 번에 처리 ---
+        if (queuedCount > 0) {
+            processEntireQueue(); // 큐 처리 메서드 호출
+        } else {
+            log.warn("큐에 추가된 데이터가 없어 DB 저장 작업을 건너니다.");
         }
     }
 
     // 큐의 모든 데이터를 한 번에 DB에 저장 시도하는 메서드
-    // private void processEntireQueue() {
-    // List<Point> batchToSave = new ArrayList<>();
-    // pointQueue.drainTo(batchToSave); // 큐의 모든 요소 가져오기
+    private void processEntireQueue() {
+        List<Point> batchToSave = new ArrayList<>();
+        pointQueue.drainTo(batchToSave); // 큐의 모든 요소 가져오기
 
-    // if (!batchToSave.isEmpty()) {
-    // log.warn("!!! 경고: 큐의 모든 데이터 {}개를 한 번의 배치로 저장 시도합니다. (매우 위험!) !!!",
-    // batchToSave.size());
-    // try {
-    // influxDBService.savePoints(batchToSave);
-    // // 성공 로그는 InfluxDBService에서 출력될 것임
-    // } catch (Exception e) {
-    // log.error("!!! 전체 큐 데이터 처리 중 InfluxDB 저장 실패. {}개의 포인트 유실 가능성. !!!",
-    // batchToSave.size(), e);
-    // // 여기에서 실패 시 어떻게 할지 결정해야 함 (예: 로그만 남기기, 재시도 불가)
-    // }
-    // } else {
-    // log.info("처리할 큐 데이터가 없습니다.");
-    // }
-    // }
+        if (!batchToSave.isEmpty()) {
+            log.warn("!!! 경고: 큐의 모든 데이터 {}개를 한 번의 배치로 저장 시도합니다. (매우 위험!) !!!", batchToSave.size());
+            try {
+                influxDBService.savePoints(batchToSave);
+                // 성공 로그는 InfluxDBService에서 출력될 것임
+            } catch (Exception e) {
+                log.error("!!! 전체 큐 데이터 처리 중 InfluxDB 저장 실패. {}개의 포인트 유실 가능성. !!!", batchToSave.size(), e);
+                // 여기에서 실패 시 어떻게 할지 결정해야 함 (예: 로그만 남기기, 재시도 불가)
+            }
+        } else {
+            log.info("처리할 큐 데이터가 없습니다.");
+        }
+    }
 
     // 기존 processQueue 메서드는 이제 사용되지 않으므로 주석 처리 또는 삭제
     /*
@@ -290,7 +254,7 @@ public class ModbusService {
             log.info("종료 시점에 큐가 비어있습니다.");
         }
         // 기존 다른 cleanup 로직 호출 (예: Modbus 연결 해제 등)
-        // cleanupModbusConnections(); // 별도 메서드라고 가정
+        cleanupModbusConnections(); // 별도 메서드라고 가정
     }
 
     // Modbus 연결 해제 등 다른 cleanup 로직을 위한 메서드 (예시)
