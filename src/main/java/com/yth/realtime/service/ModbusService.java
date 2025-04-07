@@ -1,8 +1,5 @@
 package com.yth.realtime.service;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -10,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Random;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -17,7 +15,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
@@ -41,13 +38,17 @@ import com.yth.realtime.event.HistoricalDataEvent;
 import com.yth.realtime.repository.ModbusDeviceRepository;
 import com.yth.realtime.repository.SettingsRepository;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
 @Transactional
 @Slf4j
 @EnableScheduling
+@RequiredArgsConstructor
 public class ModbusService {
     private static final Logger log = LoggerFactory.getLogger(ModbusService.class);
     private final InfluxDBService influxDBService;
@@ -68,214 +69,8 @@ public class ModbusService {
     // pointQueue 필드 선언 추가
     private final BlockingQueue<Point> pointQueue = new LinkedBlockingQueue<>();
 
-    public ModbusService(InfluxDBService influxDBService,
-            ModbusDeviceRepository modbusDeviceRepository,
-            SettingsRepository settingsRepository,
-            ApplicationEventPublisher eventPublisher) {
-        this.influxDBService = influxDBService;
-        this.settingsRepository = settingsRepository;
-        this.modbusDeviceRepository = modbusDeviceRepository;
-        this.eventPublisher = eventPublisher;
-    }
-
-    // @PostConstruct
-    // public void init() {
-    // log.info("ModbusService 초기화 시작");
-    // try {
-    // // 여기에 기존 초기화 코드
-
-    // log.info("ModbusService 초기화 완료");
-    // } catch (Exception e) {
-    // log.error("ModbusService 초기화 실패: {}", e.getMessage(), e);
-    // }
-    // }
-
-    // 테스트 코드 추가
-    // @PostConstruct
-    // public void runCsvTest() {
-    // startCsvBatchInsertAndQueue();
-    // }
-    // @Scheduled(fixedRate = 1000) // 1초마다 실행
-    // public void repeatCsvInsert() {
-    //     long currentCount = csvInsertCounter.incrementAndGet();
-    //     log.info("CSV 데이터 삽입 시도 #{}", currentCount);
-    //     startCsvBatchInsertAndQueue();
-
-    // }
-
-    public void startCsvBatchInsertAndQueue() {
-        String csvFilePath = "C:/Users/CITUS/Desktop/modbusdata/all_racks_combined.csv";
-        AtomicInteger totalPointsQueued = new AtomicInteger(0);
-
-        // log.info("CSV 파일 로딩 및 데이터 큐잉 시작: {}", csvFilePath);
-        long startTime = System.currentTimeMillis();
-
-        try (BufferedReader reader = new BufferedReader(new FileReader(csvFilePath))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                totalPointsQueued.incrementAndGet();
-                String trimmedLine = line.trim();
-
-                // === 추가: 헤더 행 건너뛰기 ===
-                // CSV 파일의 실제 헤더 내용과 정확히 일치하는지 확인 필요
-                if (trimmedLine.startsWith("rack_id,module_id,cell_id")) {
-                    log.debug("CSV 헤더 행 건너뜁니다: {}", trimmedLine);
-                    continue; // 다음 줄 처리로 넘어감
-                }
-                // === 추가 끝 ===
-
-                try {
-                    // 원본 행과 클린된 행 로깅 (디버깅용)
-                    String cleanedLine = trimmedLine.replaceAll("^,+", "");
-                    // log.debug("원본 행: [{}], 클린된 행: [{}]", trimmedLine, cleanedLine);
-                    String[] row = cleanedLine.split(",");
-
-                    // CSV 파일의 구조에 맞게 조건을 확인
-                    if (row.length >= 15) { // 최소 컬럼 수를 15개로 변경 (ID 3개 + 값 6개 + 디바이스 ID 6개)
-                        // === 추가 시작 ===
-                        String rackId = row[0].trim();
-                        String moduleId = row[1].trim();
-                        String cellId = row[2].trim();
-                        // === 추가 끝 ===
-
-                        // 인덱스 조정 (기존 인덱스 + 3)
-                        double temperatureMin = Double.parseDouble(row[3].trim()); // 0 -> 3
-                        double temperatureMax = Double.parseDouble(row[4].trim()); // 1 -> 4
-                        double temperatureAvg = Double.parseDouble(row[5].trim()); // 2 -> 5
-                        double humidityMin = Double.parseDouble(row[6].trim()); // 3 -> 6
-                        double humidityMax = Double.parseDouble(row[7].trim()); // 4 -> 7
-                        double humidityAvg = Double.parseDouble(row[8].trim()); // 5 -> 8
-                        String temperatureMinDevice = row[9].trim(); // 6 -> 9
-                        String temperatureMaxDevice = row[10].trim(); // 7 -> 10
-                        String temperatureAvgDevice = row[11].trim(); // 8 -> 11
-                        String humidityMinDevice = row[12].trim(); // 9 -> 12
-                        String humidityMaxDevice = row[13].trim(); // 10 -> 13
-                        String humidityAvgDevice = row[14].trim(); // 11 -> 14
-
-                        String deviceId = "CsvTestDevice";
-                        String host = "CsvTestHost";
-                        String measurement = "sensor_data_csv_test10"; // 필요 시 measurement 이름 변경 고려
-
-                        Point point = Point.measurement(measurement)
-                                // === 추가 시작 ===
-                                .addTag("rack_id", rackId)
-                                .addTag("module_id", moduleId)
-                                .addTag("cell_id", cellId)
-                                // === 추가 끝 ===
-                                .addField("temperature_min", temperatureMin)
-                                .addField("temperature_max", temperatureMax)
-                                .addField("temperature_avg", temperatureAvg)
-                                .addField("humidity_min", humidityMin)
-                                .addField("humidity_max", humidityMax)
-                                .addField("humidity_avg", humidityAvg)
-                                .addTag("temperature_min_device", temperatureMinDevice)
-                                .addTag("temperature_max_device", temperatureMaxDevice)
-                                .addTag("temperature_avg_device", temperatureAvgDevice)
-                                .addTag("humidity_min_device", humidityMinDevice)
-                                .addTag("humidity_max_device", humidityMaxDevice)
-                                .addTag("humidity_avg_device", humidityAvgDevice)
-                                .time(Instant.now(), WritePrecision.MS);
-
-                        pointQueue.put(point);
-                        // totalPointsQueued.incrementAndGet();
-                    } else {
-                        log.warn("CSV 행의 열 개수가 예상과 다름 (15개 이상 예상): {}", trimmedLine); // 경고 메시지 업데이트
-                    }
-                } catch (NumberFormatException e) {
-                    log.warn("숫자 변환 실패 (행 무시): {} - {}", trimmedLine, e.getMessage());
-                } catch (ArrayIndexOutOfBoundsException e) {
-                    log.warn("CSV 행 처리 중 인덱스 오류 발생 (행 무시): {} - {}", trimmedLine, e.getMessage());
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    log.error("데이터 큐잉 중 인터럽트 발생", e);
-                    break;
-                } catch (Exception e) {
-                    log.warn("CSV 행 처리 중 오류 발생 (행 무시): {} - {}", trimmedLine, e.getMessage());
-                }
-            }
-        } catch (IOException e) {
-            log.error("CSV 파일 읽기 실패: {}", e.getMessage(), e);
-            return;
-        } catch (Exception e) {
-            log.error("CSV 데이터 처리 중 예외 발생: {}", e.getMessage(), e);
-        }
-
-        long endTime = System.currentTimeMillis();
-        int queuedCount = totalPointsQueued.get();
-        log.info("CSV 파일 로딩 및 큐잉 완료. 총 {} 포인트 큐에 추가됨. 소요 시간: {} ms",
-                queuedCount, (endTime - startTime));
-
-        // --- 큐에 있는 모든 데이터를 한 번에 처리 ---
-        if (queuedCount > 0) {
-            processEntireQueue(); // 큐 처리 메서드 호출
-        } else {
-            log.warn("큐에 추가된 데이터가 없어 DB 저장 작업을 건너니다.");
-        }
-    }
-
-    // 큐의 모든 데이터를 한 번에 DB에 저장 시도하는 메서드
-    private void processEntireQueue() {
-        List<Point> batchToSave = new ArrayList<>();
-        pointQueue.drainTo(batchToSave); // 큐의 모든 요소 가져오기
-
-        if (!batchToSave.isEmpty()) {
-            log.warn("!!! 경고: 큐의 모든 데이터 {}개를 한 번의 배치로 저장 시도합니다. (매우 위험!) !!!", batchToSave.size());
-            try {
-                influxDBService.savePoints(batchToSave);
-                // 성공 로그는 InfluxDBService에서 출력될 것임
-            } catch (Exception e) {
-                log.error("!!! 전체 큐 데이터 처리 중 InfluxDB 저장 실패. {}개의 포인트 유실 가능성. !!!", batchToSave.size(), e);
-                // 여기에서 실패 시 어떻게 할지 결정해야 함 (예: 로그만 남기기, 재시도 불가)
-            }
-        } else {
-            log.info("처리할 큐 데이터가 없습니다.");
-        }
-    }
-
-    // 기존 processQueue 메서드는 이제 사용되지 않으므로 주석 처리 또는 삭제
-    /*
-     * @Scheduled(fixedDelay = 10) // 이전 버전
-     * public void processQueue() { ... }
-     */
-
-    // 애플리케이션 종료 시 스레드 풀 및 남은 큐 데이터 처리
-    @PreDestroy
-    public void cleanupQueueOnShutdown() {
-        log.info("애플리케이션 종료 전 남은 큐 데이터 확인...");
-        if (!pointQueue.isEmpty()) {
-            // 애플리케이션 종료 시점에는 이미 processEntireQueue가 호출되었을 가능성이 높음
-            // 하지만 만약의 경우를 대비해 로그만 남기거나, 간단한 처리 시도
-            log.warn("애플리케이션 종료 시점에 큐에 아직 {}개의 포인트가 남아있습니다. (처리 시도 안 함)", pointQueue.size());
-            // List<Point> remainingPoints = new ArrayList<>();
-            // pointQueue.drainTo(remainingPoints);
-            // try { influxDBService.savePoints(remainingPoints); } catch (Exception e) {
-            // ... }
-        } else {
-            log.info("종료 시점에 큐가 비어있습니다.");
-        }
-        // 기존 다른 cleanup 로직 호출 (예: Modbus 연결 해제 등)
-        cleanupModbusConnections(); // 별도 메서드라고 가정
-    }
-
-    // Modbus 연결 해제 등 다른 cleanup 로직을 위한 메서드 (예시)
-    private void cleanupModbusConnections() {
-        log.info("Modbus 연결 정리 시작...");
-        modbusMasters.forEach((deviceId, master) -> {
-            try {
-                if (master != null && master.isConnected()) { // 연결 상태 확인 추가
-                    master.disconnect();
-                    log.info("Modbus 연결 해제 성공: {}", deviceId);
-                }
-            } catch (Exception e) {
-                log.error("Modbus 연결 해제 실패: {}", deviceId, e);
-            }
-        });
-        modbusMasters.clear();
-        lastDataSaveTime.clear(); // 관련 있다면 이것도 정리
-        registeredDevices.clear(); // 관련 있다면 이것도 정리
-        log.info("Modbus 연결 정리 완료.");
-    }
-    // 테스트 코드 끝
+    // === 카운터 유지 (반복 실행 모드에서 사용) ===
+    private final AtomicLong dummyDataGenerationCounter = new AtomicLong(0);
 
     /**
      * 장치를 등록하는 메서드
@@ -388,60 +183,6 @@ public class ModbusService {
             throw e;
         }
     }
-
-    /**
-     * Modbus 데이터를 읽어서 InfluxDB에 저장하고 저장된 데이터를 조회하여 반환
-     */
-    // public Map<String, Object> readModbusData(ModbusDevice device) throws
-    // Exception {
-    // ModbusTCPMaster master = getOrCreateConnection(device);
-    // try {
-    // // 1. 장치에서 레지스터 값 읽기
-    // Register[] registers = master.readMultipleRegisters(
-    // device.getSlaveId(),
-    // device.getStartAddress(),
-    // device.getLength());
-
-    // // 2. 온도와 습도 값 스케일링
-    // double temperature = registers[0].getValue() / 10.0;
-    // double humidity = registers[1].getValue() / 10.0;
-
-    // // 3. InfluxDB에 데이터 저장
-    // long currentTime = System.currentTimeMillis() / 1000;
-    // Long lastSave = lastDataSaveTime.get(device.getDeviceId());
-
-    // if (lastSave == null || (currentTime - lastSave) >= SAVE_INTERVAL) {
-    // try {
-    // influxDBService.saveSensorData(temperature, humidity, device.getHost(),
-    // device.getDeviceId());
-    // lastDataSaveTime.put(device.getDeviceId(), currentTime);
-    // log.debug("데이터 저장 완료 - deviceId: {}, temp: {}, humidity: {}",
-    // device.getDeviceId(), temperature, humidity);
-    // } catch (Exception e) {
-    // log.error("데이터 저장 실패: {} - {}", device.getDeviceId(), e.getMessage());
-    // }
-    // }
-
-    // // 4. 저장된 최신 데이터 조회
-    // // Map<String, Object> latestData =
-    // influxDBService.getLatestSensorData(device.getDeviceId());
-
-    // // 5. 조회 결과가 없으면 직접 읽은 데이터 사용
-    // // if (latestData == null || latestData.isEmpty()) {
-    // // latestData = new HashMap<>();
-    // // latestData.put("temperature", temperature);
-    // // latestData.put("humidity", humidity);
-    // // latestData.put("deviceId", device.getDeviceId());
-    // // latestData.put("time", LocalDateTime.now());
-    // // }
-
-    // log.debug("반환 데이터: {}", latestData);
-    // return latestData;
-    // } catch (Exception e) {
-    // log.error("데이터 읽기 실패: {} - {}", device.getDeviceId(), e.getMessage());
-    // throw e;
-    // }
-    // }
 
     private ModbusTCPMaster getOrCreateConnection(ModbusDevice device) throws Exception {
         ModbusTCPMaster master = modbusMasters.get(device.getDeviceId());
@@ -719,4 +460,347 @@ public class ModbusService {
 
         log.info("모든 Modbus 장치 연결 종료 완료");
     }
+
+    // ========================================================================
+    // === Helper Classes for In-Memory Structure ===
+    // ========================================================================
+
+    @Getter // Lombok 사용 시, 없으면 직접 Getter 추가
+    static class Rack {
+        private final int rackId;
+        private final List<Module> modules = new ArrayList<>();
+
+        public Rack(int rackId) {
+            this.rackId = rackId;
+        }
+
+        public void addModule(Module module) {
+            this.modules.add(module);
+        }
+
+        public int getRackId() {
+            return rackId;
+        } // Lombok 미사용 시
+
+        public List<Module> getModules() {
+            return modules;
+        } // Lombok 미사용 시
+    }
+
+    @Getter // Lombok 사용 시, 없으면 직접 Getter 추가
+    static class Module {
+        private final int moduleId;
+        private final List<Cell> cells = new ArrayList<>();
+
+        public Module(int moduleId) {
+            this.moduleId = moduleId;
+        }
+
+        public void addCell(Cell cell) {
+            this.cells.add(cell);
+        }
+
+        public int getModuleId() {
+            return moduleId;
+        } // Lombok 미사용 시
+
+        public List<Cell> getCells() {
+            return cells;
+        } // Lombok 미사용 시
+    }
+
+    @Getter // Lombok 사용 시, 없으면 직접 Getter 추가
+    static class Cell {
+        private final int cellId;
+        private final List<Double> values; // 12개의 값 저장
+
+        public Cell(int cellId, List<Double> values) {
+            this.cellId = cellId;
+            this.values = values;
+        }
+
+        public int getCellId() {
+            return cellId;
+        } // Lombok 미사용 시
+
+        public List<Double> getValues() {
+            return values;
+        } // Lombok 미사용 시
+    }
+
+    // ========================================================================
+    // === 실행 모드 및 저장 방식 선택 ===
+    // ========================================================================
+
+    // @PostConstruct // <<< 모드 1: 한 번 실행 (활성화하려면 주석 해제)
+    public void runOnceOnStartup() {
+        log.info("===== @PostConstruct: 더미 데이터 1회 생성 및 저장 시작 =====");
+        // --- 저장 방식 선택 (아래 두 줄 중 하나만 주석 해제) ---
+        // generateAndSaveInBatches(1); // 권장: 메모리 리스트 생성 후 배치 저장 (5434 행)
+        // generateAndSaveAllAtOnce(1); // 주의: 메모리 리스트 생성 후 한번에 저장 (5434 행)
+    }
+
+    @Scheduled(fixedRate = 1000) // <<< 모드 2: 반복 실행 (활성화하려면 주석 해제)
+    public void repeatDummyDataGeneration() {
+        long currentAttempt = dummyDataGenerationCounter.incrementAndGet();
+        log.info("===== @Scheduled: 더미 데이터 반복 생성 및 저장 시작 (시도 #{}) =====", currentAttempt);
+        // --- 저장 방식 선택 (아래 두 줄 중 하나만 주석 해제) ---
+        // generateAndSaveInBatches(currentAttempt); // 권장: 메모리 리스트 생성 후 배치 저장 (5434 행)
+        generateAndSaveAllAtOnce(currentAttempt); // 주의: 메모리 리스트 생성 후 한번에 저장 (5434 행)
+    }
+
+    // 소수점 3자리 반올림 헬퍼
+    private double round3(double value) {
+        return Math.round(value * 1000.0) / 1000.0;
+    }
+
+    // 소수점 2자리 반올림 헬퍼 (필요 시 사용)
+    private double round2(double value) {
+        return Math.round(value * 100.0) / 100.0;
+    }
+
+    // ========================================================================
+    // === 저장 방식 1: 메모리 리스트 생성 -> 배치 저장 (5434 행) ===
+    // ========================================================================
+    /**
+     * 1. Rack-Module-Cell(12 values) 구조를 메모리에 생성.
+     * 2. 생성된 리스트를 순회하며 각 Cell당 하나의 Point(행) 생성 (value_0 ~ value_11 필드 포함).
+     * 3. 각 Rack 처리가 끝날 때마다 해당 Rack의 Point(418개)를 배치로 InfluxDB에 저장합니다.
+     * 총 5,434 행 생성 (13 * 19 * 22), 13번의 저장 호출 발생.
+     *
+     * @param attemptCount 현재 시도 횟수
+     */
+    public void generateAndSaveInBatches(long attemptCount) {
+        long processStartTime = System.currentTimeMillis();
+        final int NUM_RACKS = 13;
+        final int NUM_MODULES = 19;
+        final int NUM_CELLS = 22;
+        final int NUM_VALUES_PER_CELL = 12;
+        final String MEASUREMENT_NAME = "dummy_cell_values_row_v1_test3";
+
+        List<Point> batch = new ArrayList<>();
+        long totalPointsGenerated = 0;
+        long totalPointsSaved = 0;
+        Random random = new Random();
+        log.info("[Attempt #{}] 더미 데이터 생성(리스트) 및 <랙 단위 배치 저장> 시작 (목표 행: {})...", attemptCount,
+                (long) NUM_RACKS * NUM_MODULES * NUM_CELLS);
+
+        try {
+            // === 1단계: 메모리에 List<Rack> 구조 생성 ===
+            long listGenStartTime = System.currentTimeMillis();
+            List<Rack> rackList = new ArrayList<>();
+            for (int rackId = 1; rackId <= NUM_RACKS; rackId++) {
+                Rack rack = new Rack(rackId);
+                for (int moduleId = 1; moduleId <= NUM_MODULES; moduleId++) {
+                    Module module = new Module(moduleId);
+                    for (int cellId = 1; cellId <= NUM_CELLS; cellId++) {
+                        List<Double> values = new ArrayList<>();
+                        for (int i = 0; i < NUM_VALUES_PER_CELL; i++) {
+                            values.add(round3(3.0 + random.nextDouble() * (4.2 - 3.0)));
+                        }
+                        Cell cell = new Cell(cellId, values);
+                        module.addCell(cell);
+                    }
+                    rack.addModule(module);
+                }
+                rackList.add(rack);
+            }
+            long listGenEndTime = System.currentTimeMillis();
+            log.info("[Attempt #{}] 메모리 리스트 구조 생성 완료 ({} ms)", attemptCount, listGenEndTime - listGenStartTime);
+
+            // === 2단계: 생성된 List<Rack> 순회하며 Point 생성 및 <랙 단위> 저장 ===
+            Instant timestamp = Instant.now();
+
+            processLoop: for (Rack rack : rackList) {
+                // === 각 랙 시작 시 배치를 비움 ===
+                batch.clear();
+                log.trace("[Attempt #{}] Processing Rack #{}", attemptCount, rack.getRackId());
+
+                for (Module module : rack.getModules()) {
+                    for (Cell cell : module.getCells()) {
+                        if (Thread.currentThread().isInterrupted()) {
+                            break processLoop;
+                        }
+                        totalPointsGenerated++;
+
+                        try {
+                            // === Point 생성 로직 ===
+                            Point point = Point.measurement(MEASUREMENT_NAME)
+                                    .addTag("rack_id", String.valueOf(rack.getRackId()))
+                                    .addTag("module_id", String.valueOf(module.getModuleId()))
+                                    .addTag("cell_id", String.valueOf(cell.getCellId()));
+
+                            List<Double> cellValues = cell.getValues();
+                            for (int i = 0; i < cellValues.size(); i++) {
+                                point = point.addField("value_" + i, cellValues.get(i));
+                            }
+                            point = point.time(timestamp, WritePrecision.MS);
+
+                            batch.add(point); // 현재 랙의 배치에 추가
+
+                        } catch (Exception e) {
+                            log.warn("[Attempt #{}] Point 생성 또는 배치 추가 중 오류 발생: R{} M{} C{}",
+                                    attemptCount, rack.getRackId(), module.getModuleId(), cell.getCellId(), e);
+                        }
+                    } // cell loop
+                } // module loop
+
+                // === 랙 처리 완료 후: 해당 랙의 배치 저장 ===
+                if (!batch.isEmpty()) {
+                    log.info("[Attempt #{}] Saving batch for Rack #{} ({} points)...", attemptCount, rack.getRackId(),
+                            batch.size());
+                    saveBatch(batch, attemptCount); // 해당 랙의 포인트(418개) 저장
+                    totalPointsSaved += batch.size();
+                }
+            } // rack loop
+
+        } catch (Exception e) {
+            log.error("[Attempt #{}] 더미 데이터 생성/저장 프로세스 중 예외 발생", attemptCount, e);
+        } finally {
+            long processEndTime = System.currentTimeMillis();
+            long duration = processEndTime - processStartTime;
+            log.info("===== 더미 데이터 생성(리스트) 및 <랙 단위 배치 저장> 완료 (시도 #{}) =====", attemptCount);
+            log.info("총 생성된 포인트(행): {}, 실제 DB 저장된 포인트: {}", totalPointsGenerated, totalPointsSaved);
+            log.info("총 소요 시간: {} ms", duration);
+            if (duration <= 1000) {
+                log.info(">>>> 성공: 1초 목표 달성 (시도 #{})", attemptCount);
+            } else {
+                log.warn("<<<< 경고: 1초 목표 초과 ({} ms, 시도 #{})", duration, attemptCount);
+            }
+        }
+    }
+
+    // ========================================================================
+    // === 저장 방식 2: 메모리 리스트 생성 -> 한 번에 저장 (5434 행) ===
+    // ========================================================================
+    /**
+     * 1. Rack-Module-Cell(12 values) 구조를 메모리에 생성.
+     * 2. 생성된 리스트를 순회하며 각 Cell당 하나의 Point(행) 생성 (value_0 ~ value_11 필드 포함).
+     * 3. 생성된 모든 Point(5,434개)를 InfluxDB에 한 번에 저장합니다.
+     * 주의: DB 부하 및 타임아웃 가능성이 있습니다.
+     *
+     * @param attemptCount 현재 시도 횟수
+     */
+    public void generateAndSaveAllAtOnce(long attemptCount) {
+        long processStartTime = System.currentTimeMillis();
+        final int NUM_RACKS = 13;
+        final int NUM_MODULES = 19;
+        final int NUM_CELLS = 22; // <<< 셀 개수 22개 확인
+        final int NUM_VALUES_PER_CELL = 12; // 셀 당 값 개수
+        final String MEASUREMENT_NAME = "dummy_cell_values_row_v1_test5"; // <<< 새 측정값 이름
+
+        List<Point> allPoints = new ArrayList<>((int) (NUM_RACKS * NUM_MODULES * NUM_CELLS)); // 예상 크기 지정
+        long totalPointsGenerated = 0; // 생성된 Point 객체 수 (행 수)
+        Random random = new Random();
+        log.warn("[Attempt #{}] 더미 데이터 생성(리스트) 및 <한 번에 저장> 시작 (목표 행: {})...", attemptCount,
+                (long) NUM_RACKS * NUM_MODULES * NUM_CELLS); // <<< 5434
+
+        try {
+            // === 1단계: 메모리에 List<Rack> 구조 생성 ===
+            long listGenStartTime = System.currentTimeMillis();
+            List<Rack> rackList = new ArrayList<>();
+            for (int rackId = 1; rackId <= NUM_RACKS; rackId++) {
+                Rack rack = new Rack(rackId);
+                for (int moduleId = 1; moduleId <= NUM_MODULES; moduleId++) {
+                    Module module = new Module(moduleId);
+                    for (int cellId = 1; cellId <= NUM_CELLS; cellId++) {
+                        List<Double> values = new ArrayList<>();
+                        for (int i = 0; i < NUM_VALUES_PER_CELL; i++) {
+                            values.add(round3(3.0 + random.nextDouble() * (4.2 - 3.0))); // 3.0 ~ 4.2
+                        }
+                        Cell cell = new Cell(cellId, values);
+                        module.addCell(cell);
+                    }
+                    rack.addModule(module);
+                }
+                rackList.add(rack);
+            }
+            long listGenEndTime = System.currentTimeMillis();
+            log.info("[Attempt #{}] 메모리 리스트 구조 생성 완료 ({} ms)", attemptCount, listGenEndTime - listGenStartTime);
+
+            // === 2단계: 생성된 List<Rack> 순회하며 Point 생성 ===
+            Instant timestamp = Instant.now(); // 모든 포인트에 동일한 타임스탬프 적용
+
+            processLoop: // 라벨 추가
+            for (Rack rack : rackList) {
+                for (Module module : rack.getModules()) {
+                    for (Cell cell : module.getCells()) {
+                        if (Thread.currentThread().isInterrupted()) {
+                            break processLoop;
+                        }
+
+                        totalPointsGenerated++; // 셀 당 1 증가 (총 5434번)
+
+                        try {
+                            // === 각 Cell 객체당 하나의 Point 생성 ===
+                            Point point = Point.measurement(MEASUREMENT_NAME)
+                                    .addTag("rack_id", String.valueOf(rack.getRackId()))
+                                    .addTag("module_id", String.valueOf(module.getModuleId()))
+                                    .addTag("cell_id", String.valueOf(cell.getCellId()));
+
+                            // === Cell의 12개 값을 value_0 ~ value_11 필드로 추가 ===
+                            List<Double> cellValues = cell.getValues();
+                            for (int i = 0; i < cellValues.size(); i++) {
+                                point = point.addField("value_" + i, cellValues.get(i));
+                            }
+
+                            point = point.time(timestamp, WritePrecision.MS); // 타임스탬프 설정
+                            allPoints.add(point); // 전체 리스트에 추가
+
+                        } catch (Exception e) {
+                            log.warn("[Attempt #{}] Point 생성 또는 리스트 추가 중 오류 발생: R{} M{} C{}",
+                                    attemptCount, rack.getRackId(), module.getModuleId(), cell.getCellId(), e);
+                        }
+                    } // cell loop
+                } // module loop
+            } // rack loop
+
+            // === 3단계: 모든 Point 한 번에 저장 ===
+            if (!allPoints.isEmpty()) {
+                log.warn("[Attempt #{}] 모든 더미 데이터({}) 생성 완료. DB에 <한 번에 저장> 시작...", attemptCount, allPoints.size());
+                saveBatch(allPoints, attemptCount); // saveBatch 재사용 (이름은 그대로 두지만 실제론 전체 저장)
+            } else {
+                log.warn("[Attempt #{}] 생성된 더미 데이터가 없습니다.", attemptCount);
+            }
+
+        } catch (Exception e) {
+            log.error("[Attempt #{}] 더미 데이터 생성/저장 프로세스 중 예외 발생", attemptCount, e);
+        } finally {
+            long processEndTime = System.currentTimeMillis();
+            long duration = processEndTime - processStartTime;
+            log.info("===== 더미 데이터 생성(리스트) 및 <한 번에 저장> 완료 (시도 #{}) =====", attemptCount);
+            log.info("총 생성된 포인트(행): {}", totalPointsGenerated); // 5434개 목표
+            log.info("총 소요 시간: {} ms", duration);
+            if (duration <= 1000) {
+                log.info(">>>> 성공: 1초 목표 달성 (시도 #{})", attemptCount);
+            } else {
+                log.warn("<<<< 경고: 1초 목표 초과 ({} ms, 시도 #{})", duration, attemptCount);
+            }
+        }
+    }
+
+    // ========================================================================
+    // === 저장 헬퍼 메서드 ===
+    // ========================================================================
+    /**
+     * 제공된 포인트 리스트(배치 또는 전체)를 InfluxDB에 저장합니다.
+     * 
+     * @param pointsToSave 저장할 포인트 리스트
+     * @param attemptCount 현재 시도 횟수 (로깅용)
+     */
+    private void saveBatch(List<Point> pointsToSave, long attemptCount) {
+        if (pointsToSave == null || pointsToSave.isEmpty()) {
+            return;
+        }
+        log.debug("[Attempt #{}] saveBatch 호출됨 - 포인트 {}개 저장 시도", attemptCount, pointsToSave.size());
+        try {
+            // influxDBService.savePoints(pointsToSave); // 원본 리스트 직접 전달 시 문제 발생 가능성?
+            influxDBService.savePoints(new ArrayList<>(pointsToSave)); // 방어적 복사본 전달
+        } catch (Exception e) {
+            log.error("!!! [Attempt #{}] InfluxDB 저장 중 심각한 오류 발생 (포인트 {}개).",
+                    attemptCount, pointsToSave.size(), e);
+            // 필요 시, 여기에 추가적인 오류 처리 로직 (예: 재시도, 실패 로깅 등)
+        }
+    }
+
 }
