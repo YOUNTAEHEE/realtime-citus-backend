@@ -687,7 +687,7 @@ public class ModbusService {
         final int NUM_MODULES = 19;
         final int NUM_CELLS = 22; // <<< 셀 개수 22개 확인
         final int NUM_VALUES_PER_CELL = 12; // 셀 당 값 개수
-        final String MEASUREMENT_NAME = "dummy_cell_values_row_v1_test5"; // <<< 새 측정값 이름
+        final String MEASUREMENT_NAME = "dummy_cell_values_row_v1_test6"; // <<< 새 측정값 이름
 
         List<Point> allPoints = new ArrayList<>((int) (NUM_RACKS * NUM_MODULES * NUM_CELLS)); // 예상 크기 지정
         long totalPointsGenerated = 0; // 생성된 Point 객체 수 (행 수)

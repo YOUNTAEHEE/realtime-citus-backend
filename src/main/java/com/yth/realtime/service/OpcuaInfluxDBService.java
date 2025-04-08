@@ -102,6 +102,8 @@ public class OpcuaInfluxDBService {
      * @return 최신 데이터
      */
     public Map<String, Object> getLatestOpcuaData(String deviceGroup) {
+        log.debug("getLatestOpcuaData 호출됨 - deviceGroup: {}", deviceGroup);
+
         String fieldFilter = deviceGroup.equals("all") ? "" : String.format("and (r._field =~ /^%s_.*/)", deviceGroup);
 
         String query = String.format(
@@ -116,8 +118,11 @@ public class OpcuaInfluxDBService {
         List<Map<String, Object>> results = queryData(query);
 
         if (!results.isEmpty()) {
+            log.info("최신 데이터 조회 성공. 결과 레코드 수: {}", results.size()); // <<< 로그 추가
             return results.get(0);
+            
         } else {
+            log.warn("최신 데이터 조회 결과 없음.  또는 해당 시간 범위 내 데이터 확인 필요.");
             Map<String, Object> emptyResult = new HashMap<>();
             emptyResult.put("time", LocalDateTime.now());
             emptyResult.put("message", "데이터가 없습니다");
