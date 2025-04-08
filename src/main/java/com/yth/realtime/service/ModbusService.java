@@ -17,7 +17,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
-
+import java.util.concurrent.ExecutorService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -687,7 +687,7 @@ public class ModbusService {
         final int NUM_MODULES = 19;
         final int NUM_CELLS = 22; // <<< 셀 개수 22개 확인
         final int NUM_VALUES_PER_CELL = 12; // 셀 당 값 개수
-        final String MEASUREMENT_NAME = "dummy_cell_values_row_v1_test6"; // <<< 새 측정값 이름
+        final String MEASUREMENT_NAME = "dummy_cell_values_row_v1_test9"; // <<< 새 측정값 이름
 
         List<Point> allPoints = new ArrayList<>((int) (NUM_RACKS * NUM_MODULES * NUM_CELLS)); // 예상 크기 지정
         long totalPointsGenerated = 0; // 생성된 Point 객체 수 (행 수)
@@ -788,19 +788,61 @@ public class ModbusService {
      * @param pointsToSave 저장할 포인트 리스트
      * @param attemptCount 현재 시도 횟수 (로깅용)
      */
+    // private void saveBatch(List<Point> pointsToSave, long attemptCount) {
+    //     if (pointsToSave == null || pointsToSave.isEmpty()) {
+    //         return;
+    //     }
+    //     log.debug("[Attempt #{}] saveBatch 호출됨 - 포인트 {}개 저장 시도", attemptCount, pointsToSave.size());
+    //     try {
+    //         // influxDBService.savePoints(pointsToSave); // 원본 리스트 직접 전달 시 문제 발생 가능성?
+    //         influxDBService.savePoints(new ArrayList<>(pointsToSave)); // 방어적 복사본 전달
+    //     } catch (Exception e) {
+    //         log.error("!!! [Attempt #{}] InfluxDB 저장 중 심각한 오류 발생 (포인트 {}개).",
+    //                 attemptCount, pointsToSave.size(), e);
+    //         // 필요 시, 여기에 추가적인 오류 처리 로직 (예: 재시도, 실패 로깅 등)
+    //     }
+    // }
     private void saveBatch(List<Point> pointsToSave, long attemptCount) {
         if (pointsToSave == null || pointsToSave.isEmpty()) {
             return;
         }
-        log.debug("[Attempt #{}] saveBatch 호출됨 - 포인트 {}개 저장 시도", attemptCount, pointsToSave.size());
+    
+        final int THREAD_COUNT = 4; // 병렬 처리할 스레드 수
+        final int BATCH_SIZE = 500; // 한 스레드가 처리할 포인트 수
+    
+        ExecutorService executor = Executors.newFixedThreadPool(THREAD_COUNT);
+    
+        int totalPoints = pointsToSave.size();
+        log.debug("[Attempt #{}] 병렬 저장 시작 (총 {} 포인트)", attemptCount, totalPoints);
+    
+        for (int i = 0; i < totalPoints; i += BATCH_SIZE) {
+            int start = i;
+            int end = Math.min(i + BATCH_SIZE, totalPoints);
+            List<Point> subBatch = new ArrayList<>(pointsToSave.subList(start, end));
+    
+            executor.submit(() -> {
+                try {
+                    influxDBService.savePoints(subBatch);
+                    log.debug("[Attempt #{}] Sub-batch 저장 성공: {} ~ {}", attemptCount, start, end);
+                } catch (Exception e) {
+                    log.error("[Attempt #{}] Sub-batch 저장 실패 ({} ~ {}): {}", attemptCount, start, end, e.getMessage());
+                }
+            });
+        }
+    
+        executor.shutdown();
         try {
-            // influxDBService.savePoints(pointsToSave); // 원본 리스트 직접 전달 시 문제 발생 가능성?
-            influxDBService.savePoints(new ArrayList<>(pointsToSave)); // 방어적 복사본 전달
-        } catch (Exception e) {
-            log.error("!!! [Attempt #{}] InfluxDB 저장 중 심각한 오류 발생 (포인트 {}개).",
-                    attemptCount, pointsToSave.size(), e);
-            // 필요 시, 여기에 추가적인 오류 처리 로직 (예: 재시도, 실패 로깅 등)
+            boolean finished = executor.awaitTermination(30, TimeUnit.SECONDS);
+            if (!finished) {
+                log.warn("[Attempt #{}] 일부 병렬 저장 작업이 타임아웃됨", attemptCount);
+            } else {
+                log.debug("[Attempt #{}] 모든 병렬 저장 작업 완료", attemptCount);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("[Attempt #{}] 저장 쓰레드 인터럽트됨", attemptCount, e);
         }
     }
+    
 
 }
