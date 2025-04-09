@@ -140,7 +140,7 @@ public class ModbusTest {
     //     // generateAndSaveAllAtOnce(1); // 주의: 메모리 리스트 생성 후 한번에 저장 (5434 행)
     // }
 
-    @Scheduled(fixedRate = 1000) // <<< 모드 2: 반복 실행 (활성화하려면 주석 해제)
+    // @Scheduled(fixedRate = 1000) // <<< 모드 2: 반복 실행 (활성화하려면 주석 해제)
     public void repeatDummyDataGeneration() {
         long currentAttempt = dummyDataGenerationCounter.incrementAndGet();
         log.info("===== @Scheduled: 더미 데이터 반복 생성 및 저장 시작 (시도 #{}) =====", currentAttempt);
@@ -858,15 +858,16 @@ public void generateAndQueueDummyData(long attemptCount) {
                         }
                         point = point.time(timestamp, WritePrecision.MS);
 
-                        // 큐에 데이터 넣기
-                        boolean offered = dummyDataQueue.offer(point, 50, TimeUnit.MILLISECONDS);
-                        if (offered) {
-                            totalPointsGenerated++;
-                        } else {
-                            log.warn("[Attempt #{}] 큐가 가득 차서 Point 추가 실패 (Timeout). R{} M{} C{}.",
-                                     attemptCount, rackId, moduleId, cellId);
-                        }
+                        // // 큐에 데이터 넣기
+                        // boolean offered = dummyDataQueue.offer(point, 50, TimeUnit.MILLISECONDS);
+                        // if (offered) {
+                        //     totalPointsGenerated++;
+                        // } else {
+                        //     log.warn("[Attempt #{}] 큐가 가득 차서 Point 추가 실패 (Timeout). R{} M{} C{}.",
+                        //              attemptCount, rackId, moduleId, cellId);
+                        // }
 
+                        dummyDataQueue.put(point); // ← put으로 변경 (유실 방지)
                     } catch (InterruptedException e) {
                          log.warn("[Attempt #{}] Point 큐 추가 대기 중 인터럽트 발생. 생성 중단.", attemptCount);
                          Thread.currentThread().interrupt();

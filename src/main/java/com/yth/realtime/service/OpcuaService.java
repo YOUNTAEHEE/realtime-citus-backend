@@ -3,11 +3,16 @@ package com.yth.realtime.service;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -54,13 +59,20 @@ public class OpcuaService {
 
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
     private final ExecutorService saveExecutor = Executors.newFixedThreadPool(4); // 저장 스레드
-    private final ExecutorService sendExecutor = Executors.newSingleThreadExecutor(); // 전송 스레드
-
+    ExecutorService storageExecutor = Executors.newFixedThreadPool(8);
+    // private final ExecutorService sendExecutor =
+    // Executors.newSingleThreadExecutor(); // 전송 스레드
+    ExecutorService sendExecutor = Executors.newFixedThreadPool(3);
     private final BlockingQueue<TimestampedData> saveQueue = new LinkedBlockingQueue<>(1000);
-    private final BlockingQueue<LocalDateTime> sendQueue = new LinkedBlockingQueue<>(1000);
+    // private final BlockingQueue<LocalDateTime> sendQueue = new
+    // LinkedBlockingQueue<>(1000);
 
     private ScheduledFuture<?> dataCollectionTask;
     private boolean autoReconnect = true;
+    // 중복 방지용 Set
+    private final Set<LocalDateTime> seenTimestamps = ConcurrentHashMap.newKeySet();
+    // 중복 제거가 가능한 큐
+    private final LinkedBlockingDeque<LocalDateTime> sendQueue = new LinkedBlockingDeque<>(1000);
 
     @Autowired
     public OpcuaService(OpcuaClient opcuaClient, OpcuaWebSocketHandler opcuaWebSocketHandler,
@@ -251,64 +263,207 @@ public class OpcuaService {
         log.info("✅ 수집 시작됨 (5ms 간격, put 방식으로 변경 - 데이터 유실 방지)");
 
         // ✅ 2. 저장 스레드 (조회 제거, sendQueue에 타임스탬프 put)
-        for (int i = 0; i < 4; i++) {
-            saveExecutor.submit(() -> {
-                while (!Thread.currentThread().isInterrupted()) {
-                    try {
-                        TimestampedData timestampedData = saveQueue.take(); // 큐에서 데이터+타임스탬프 꺼내기
-                        // DB 저장 시도
-                        saveToInfluxDB(timestampedData.getData(), timestampedData.getTimestamp());
+        // for (int i = 0; i < 4; i++) {
+        // saveExecutor.submit(() -> {
+        // while (!Thread.currentThread().isInterrupted()) {
+        // try {
+        // TimestampedData timestampedData = saveQueue.take(); // 큐에서 데이터+타임스탬프 꺼내기
+        // // DB 저장 시도
+        // saveToInfluxDB(timestampedData.getData(), timestampedData.getTimestamp());
 
-                        // === 수정: DB 조회 대신, 저장된 데이터의 타임스탬프를 sendQueue에 넣음 ===
-                        try {
-                            // sendQueue가 가득 차면 여기서 대기
-                            sendQueue.put(timestampedData.getTimestamp());
-                        } catch (InterruptedException e) {
-                            log.warn("데이터 전송 큐(Timestamp) 대기 중 인터럽트 발생", e);
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
+        // // === 수정: DB 조회 대신, 저장된 데이터의 타임스탬프를 sendQueue에 넣음 ===
+        // try {
+        // // sendQueue가 가득 차면 여기서 대기
+        // sendQueue.put(timestampedData.getTimestamp());
+        // } catch (InterruptedException e) {
+        // log.warn("데이터 전송 큐(Timestamp) 대기 중 인터럽트 발생", e);
+        // Thread.currentThread().interrupt();
+        // break;
+        // }
 
-                        // --- 삭제: DB 조회 및 이전 put 로직 제거 ---
-                        // Map<String, Object> latest = influxDBService.getLatestOpcuaData("all");
-                        // try {
-                        // sendQueue.put(latest); ...
+        // // --- 삭제: DB 조회 및 이전 put 로직 제거 ---
+        // // Map<String, Object> latest = influxDBService.getLatestOpcuaData("all");
+        // // try {
+        // // sendQueue.put(latest); ...
 
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    } catch (Exception e) {
-                        log.error("저장 처리 중 오류 발생 (saveExecutor): {}", e.getMessage(), e);
-                    }
-                }
-                log.info("저장 스레드 종료됨.");
-            });
-        }
+        // } catch (InterruptedException e) {
+        // Thread.currentThread().interrupt();
+        // break;
+        // } catch (Exception e) {
+        // log.error("저장 처리 중 오류 발생 (saveExecutor): {}", e.getMessage(), e);
+        // }
+        // }
+        // log.info("저장 스레드 종료됨.");
+        // });
 
-        // ✅ 3. 전송 스레드 (큐에서 타임스탬프 꺼낸 후 DB 조회 및 전송)
-        sendExecutor.submit(() -> {
+        // ✅ 2. 저장 스레드 (배치 + 병렬 처리 방식)
+        // saveExecutor.submit(() -> {
+        // while (!Thread.currentThread().isInterrupted()) {
+        // try {
+        // // 1. 배치 단위로 데이터 꺼내기
+        // List<TimestampedData> batch = new ArrayList<>();
+        // saveQueue.drainTo(batch, 50); // 최대 50개까지 한 번에 꺼냄
+
+        // if (batch.isEmpty()) {
+        // // 데이터 없으면 잠깐 대기 (CPU 낭비 방지)
+        // Thread.sleep(5);
+        // continue;
+        // }
+
+        // // 2. 병렬 저장 처리
+        // batch.parallelStream().forEach(data -> {
+        // try {
+        // saveToInfluxDB(data.getData(), data.getTimestamp());
+
+        // // 저장 후 전송 큐에 타임스탬프 전달
+        // try {
+        // sendQueue.put(data.getTimestamp());
+        // } catch (InterruptedException e) {
+        // Thread.currentThread().interrupt();
+        // log.warn("sendQueue.put() 중 인터럽트 발생", e);
+        // }
+
+        // } catch (Exception e) {
+        // log.error("배치 저장 중 오류", e);
+        // }
+        // });
+
+        // } catch (InterruptedException e) {
+        // Thread.currentThread().interrupt();
+        // log.info("저장 스레드 인터럽트로 종료됨");
+        // break;
+        // } catch (Exception e) {
+        // log.error("배치 저장 처리 오류", e);
+        // }
+        // }
+        // log.info("저장 스레드 종료됨 (배치 + 병렬 처리)");
+        // });
+        // }
+
+        // saveExecutor.submit(() -> {
+        // while (!Thread.currentThread().isInterrupted()) {
+        // try {
+        // // 1. 배치 단위로 데이터 꺼내기
+        // List<TimestampedData> batch = new ArrayList<>();
+        // saveQueue.drainTo(batch, 50); // 최대 50개 꺼냄
+
+        // if (batch.isEmpty()) {
+        // Thread.sleep(5);
+        // continue;
+        // }
+
+        // // 2. ExecutorService로 병렬 저장 작업 제출
+        // for (TimestampedData data : batch) {
+        // storageExecutor.submit(() -> {
+        // try {
+        // saveToInfluxDB(data.getData(), data.getTimestamp());
+
+        // // 저장 후 전송 큐에 타임스탬프 전달
+        // try {
+        // sendQueue.put(data.getTimestamp());
+        // } catch (InterruptedException e) {
+        // Thread.currentThread().interrupt();
+        // log.warn("sendQueue.put() 중 인터럽트 발생", e);
+        // }
+
+        // } catch (Exception e) {
+        // log.error("저장 작업 중 오류", e);
+        // }
+        // });
+        // }
+
+        // } catch (InterruptedException e) {
+        // Thread.currentThread().interrupt();
+        // log.info("저장 스레드 인터럽트로 종료됨");
+        // break;
+        // } catch (Exception e) {
+        // log.error("저장 스레드 처리 오류", e);
+        // }
+        // }
+
+        // log.info("저장 스레드 종료됨 (ExecutorService 기반 병렬 처리)");
+        // });
+        // for (int i = 0; i < 4; i++) {
+        saveExecutor.submit(() -> {
             while (!Thread.currentThread().isInterrupted()) {
                 try {
-                    // === 수정: 큐에서 타임스탬프 꺼내기 (데이터 자체 X) ===
-                    LocalDateTime triggerTimestamp = sendQueue.take(); // 저장 완료 신호 (타임스탬프)
-                    log.debug("전송 트리거 수신: {}", triggerTimestamp); // 디버그 로그 추가
+                    List<TimestampedData> batch = new ArrayList<>();
+                    saveQueue.drainTo(batch, 50);
 
-                    // === 수정: 여기서 DB 최신 데이터 조회 ===
-                    Map<String, Object> latestData = influxDBService.getLatestOpcuaData("all");
+                    if (batch.isEmpty()) {
+                        Thread.sleep(5);
+                        continue;
+                    }
 
-                    // 조회 결과를 프론트엔드로 전송
-                    sendDataToFrontend(latestData);
+                    for (TimestampedData data : batch) {
+                        storageExecutor.submit(() -> {
+                            try {
+                                saveToInfluxDB(data.getData(), data.getTimestamp());
+
+                                // ✅ 중복된 timestamp가 큐에 들어가지 않도록 처리
+                                if (seenTimestamps.add(data.getTimestamp())) {
+                                    sendQueue.put(data.getTimestamp()); // 새 타임스탬프만 큐에 넣음
+                                }
+
+                            } catch (Exception e) {
+                                log.error("저장 중 오류", e);
+                            }
+                        });
+                    }
 
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
                 } catch (Exception e) {
-                    // getLatestOpcuaData 또는 sendDataToFrontend 오류 처리
-                    log.error("조회/전송 오류 (sendExecutor): {}", e.getMessage(), e);
+                    log.error("배치 저장 오류", e);
                 }
             }
-            log.info("전송 스레드 종료됨.");
         });
+        // }
+        // ✅ 3. 전송 스레드 (큐에서 타임스탬프 꺼낸 후 DB 조회 및 전송)
+        // sendExecutor.submit(() -> {
+        // while (!Thread.currentThread().isInterrupted()) {
+        // try {
+        // // === 수정: 큐에서 타임스탬프 꺼내기 (데이터 자체 X) ===
+        // LocalDateTime triggerTimestamp = sendQueue.take(); // 저장 완료 신호 (타임스탬프)
+        // log.debug("전송 트리거 수신: {}", triggerTimestamp); // 디버그 로그 추가
+
+        // // === 수정: 여기서 DB 최신 데이터 조회 ===
+        // Map<String, Object> latestData = influxDBService.getLatestOpcuaData("all");
+
+        // // 조회 결과를 프론트엔드로 전송
+        // sendDataToFrontend(latestData);
+
+        // } catch (InterruptedException e) {
+        // Thread.currentThread().interrupt();
+        // break;
+        // } catch (Exception e) {
+        // // getLatestOpcuaData 또는 sendDataToFrontend 오류 처리
+        // log.error("조회/전송 오류 (sendExecutor): {}", e.getMessage(), e);
+        // }
+        // }
+        // log.info("전송 스레드 종료됨.");
+        // });
+        sendExecutor.submit(() -> {
+            while (!Thread.currentThread().isInterrupted()) {
+                try {
+                    LocalDateTime ts = sendQueue.take(); // 트리거 타임스탬프 꺼냄
+
+                    // ✅ 전송이 끝났으면 중복 체크용 Set에서 제거
+                    seenTimestamps.remove(ts);
+
+                    Map<String, Object> latest = influxDBService.getLatestOpcuaData("all");
+                    sendDataToFrontend(latest);
+
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                } catch (Exception e) {
+                    log.error("조회/전송 오류", e);
+                }
+            }
+        });
+
     }
 
     public void stopDataCollection() {
@@ -325,6 +480,7 @@ public class OpcuaService {
         webSocketHandler.clearAllSessions();
         saveExecutor.shutdownNow();
         sendExecutor.shutdownNow();
+        storageExecutor.shutdownNow(); // 💡 추가됨
     }
 
     // 디비저장 조회 아님//구독
