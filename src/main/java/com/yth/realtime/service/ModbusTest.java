@@ -140,7 +140,7 @@ public class ModbusTest {
     //     // generateAndSaveAllAtOnce(1); // 주의: 메모리 리스트 생성 후 한번에 저장 (5434 행)
     // }
 
-    // @Scheduled(fixedRate = 1000) // <<< 모드 2: 반복 실행 (활성화하려면 주석 해제)
+    @Scheduled(fixedRate = 1000) // <<< 모드 2: 반복 실행 (활성화하려면 주석 해제)
     public void repeatDummyDataGeneration() {
         long currentAttempt = dummyDataGenerationCounter.incrementAndGet();
         log.info("===== @Scheduled: 더미 데이터 반복 생성 및 저장 시작 (시도 #{}) =====", currentAttempt);
@@ -811,7 +811,7 @@ public void generateAndQueueDummyData(long attemptCount) {
     final int NUM_MODULES = 19;
     final int NUM_CELLS = 22;
     final int NUM_VALUES_PER_CELL = 12;
-    final String MEASUREMENT_NAME = "dummy_cell_values_row_v1_test18"; // <--- 측정값 이름 확인!
+    final String MEASUREMENT_NAME = "dummy_cell_values_row_v1_test21"; // <--- 측정값 이름 확인!
     final long TOTAL_POINTS_EXPECTED = (long) NUM_RACKS * NUM_MODULES * NUM_CELLS; // 5434
 
     long totalPointsGenerated = 0;
@@ -944,7 +944,7 @@ public void generateAndQueueDummyData(long attemptCount) {
         if (!remainingPoints.isEmpty()) {
             log.warn("애플리케이션 종료 시 큐에 예상치 못하게 남은 데이터 {}개를 저장합니다.", remainingPoints.size());
             // 배치 크기는 saveBatchAndLogMilestone 내부 로직에 맡김
-             saveBatchAndLogMilestone(new ArrayList<>(remainingPoints)); // 마일스톤 로깅 포함 버전 호출
+             saveBatchAndLogMilestone(new ArrayList<>(remainingPoints), true); // 마일스톤 로깅 포함 버전 호출
         }
          log.debug("큐 드레이닝 완료 (drainQueueAndSaveRemaining).");
     }
@@ -971,7 +971,7 @@ public void generateAndQueueDummyData(long attemptCount) {
                     if (batch.size() >= POINTS_PER_GENERATION) {
                         log.info("5434개 포인트 수집 완료. DB 저장 요청 시작...");
                         // 5434개 전체 리스트를 저장 함수에 전달 (내부적으로 병렬 처리될 수 있음)
-                        saveBatchAndLogMilestone(new ArrayList<>(batch)); // 방어적 복사본 전달
+                        saveBatchAndLogMilestone(new ArrayList<>(batch), false); // 방어적 복사본 전달
                         batch.clear(); // 다음 5434개를 모으기 위해 리스트 비우기
                         log.debug("배치 리스트 비움. 다음 5434개 수집 시작.");
                     }
@@ -986,7 +986,7 @@ public void generateAndQueueDummyData(long attemptCount) {
                     // 루프를 나가기 전에 batch에 남아있는 데이터(5434개 미만) 처리
                     if (!batch.isEmpty()) {
                         log.info("소비자 스레드 종료 전, 마지막 남은 데이터 {}개를 저장합니다.", batch.size());
-                        saveBatchAndLogMilestone(new ArrayList<>(batch));
+                        saveBatchAndLogMilestone(new ArrayList<>(batch), true);
                         batch.clear();
                     }
                     break; // while 루프 탈출
@@ -999,7 +999,7 @@ public void generateAndQueueDummyData(long attemptCount) {
                 // 인터럽트 발생 시, 현재 batch에 있는 데이터 처리
                 if (!batch.isEmpty()) {
                      log.info("인터럽트 발생. 소비자 스레드 종료 전 마지막 배치 {}개 저장.", batch.size());
-                     saveBatchAndLogMilestone(new ArrayList<>(batch));
+                     saveBatchAndLogMilestone(new ArrayList<>(batch) , true);
                      batch.clear();
                 }
                 break; // 루프 탈출
@@ -1017,13 +1017,22 @@ public void generateAndQueueDummyData(long attemptCount) {
     // === 저장 헬퍼 메서드 (내부 병렬 처리 유지) ===
     // saveBatchAndLogMilestone 메서드는 이전과 동일하게 유지합니다.
     // 이 메서드는 전달받은 리스트(이제 주로 5434개)를 내부적으로 작은 배치(500개)로 나누어 병렬 저장합니다.
-    private void saveBatchAndLogMilestone(List<Point> pointsToSave) {
+    private void saveBatchAndLogMilestone(List<Point> pointsToSave, boolean isFinalFlush) {
+        // if (pointsToSave == null || pointsToSave.isEmpty()) {
+        //     return;
+        // }
+
         if (pointsToSave == null || pointsToSave.isEmpty()) {
+            if (isFinalFlush) {
+                log.warn("⚠ 종료 직전 저장하려 했지만 저장할 포인트가 없습니다.");
+            }
             return;
         }
+    
 
         int pointsInBatch = pointsToSave.size(); // 이제 이 값은 주로 5434 또는 종료 시 남은 개수
-        log.debug("DB 저장 요청 처리 시작 ({} 포인트)...", pointsInBatch);
+        log.debug("DB 저장 요청 처리 시작 ({} 포인트, 종료저장: {})...", pointsInBatch, isFinalFlush);
+        // log.debug("DB 저장 요청 처리 시작 ({} 포인트)...", pointsInBatch);
         long saveStartTime = System.currentTimeMillis();
         boolean success = false;
 
@@ -1072,15 +1081,21 @@ public void generateAndQueueDummyData(long attemptCount) {
              success = true; // 하나라도 성공하면 success로 간주 (개선 가능)
         }
         long saveEndTime = System.currentTimeMillis();
-        log.debug("DB 저장 요청 처리 완료 (실제 저장: {} / 요청: {}, 소요 시간: {} ms)", actualSaved, pointsInBatch, saveEndTime - saveStartTime);
-
+        // log.debug("DB 저장 요청 처리 완료 (실제 저장: {} / 요청: {}, 소요 시간: {} ms)", actualSaved, pointsInBatch, saveEndTime - saveStartTime);
+        log.debug("저장 완료 ({} / {}개, 소요 {}ms, 종료저장: {})",
+        actualSaved, pointsInBatch, saveEndTime - saveStartTime, isFinalFlush);
 
         // 저장 성공 시 카운터 업데이트 및 로깅 (실제 저장된 개수 기준)
         if (success) {
             long previousTotal = totalPointsSavedCounter.get();
             long currentTotal = totalPointsSavedCounter.addAndGet(actualSaved); // 실제 저장된 만큼만 증가
-            log.info("저장 완료: 이번 요청 처리 {}개 / 총 {}개 저장 완료.", actualSaved, currentTotal);
+            // log.info("저장 완료: 이번 요청 처리 {}개 / 총 {}개 저장 완료.", actualSaved, currentTotal);
 
+            if (isFinalFlush) {
+                log.info("✅ 종료 시 남은 데이터 {}개 저장 완료. 누적 총: {}", actualSaved, currentTotal);
+            } else {
+                log.info("저장 완료: {}개 처리 / 누적 총 {}개", actualSaved, currentTotal);
+            }
             long previousMilestone = loggedMilestoneCounter.get();
             long currentMilestoneTarget = (previousMilestone + 1) * POINTS_PER_GENERATION;
             if (currentTotal >= currentMilestoneTarget && previousTotal < currentMilestoneTarget) {
@@ -1090,7 +1105,8 @@ public void generateAndQueueDummyData(long attemptCount) {
                           achievedMilestone, POINTS_PER_GENERATION, achievedMilestone * POINTS_PER_GENERATION, currentTotal);
             }
         } else if (pointsInBatch > 0) {
-             log.error("DB 저장 요청 처리 실패 (요청: {} 포인트)", pointsInBatch);
+            //  log.error("DB 저장 요청 처리 실패 (요청: {} 포인트)", pointsInBatch);
+            log.error("❌ 저장 실패 (요청: {}개, 종료저장: {})", pointsInBatch, isFinalFlush);
         }
     }
 }

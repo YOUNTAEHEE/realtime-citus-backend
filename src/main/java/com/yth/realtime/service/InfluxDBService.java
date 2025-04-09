@@ -58,6 +58,10 @@ public class InfluxDBService {
         }
     }
 
+
+
+    
+
     /**
      * 여러 데이터 포인트를 InfluxDB에 배치로 저장합니다.
      *
@@ -77,6 +81,7 @@ public class InfluxDBService {
             writeApi.writePoints(bucket, organization, points);
             // log.info("InfluxDB 배치 쓰기 성공: {} 개의 포인트 저장", points.size());
             log.info("InfluxDB 배치 쓰기 성공: {} 개의 포인트 저장 완료 (시도 #{})", pointCount, currentCount); // 성공 로그에도 횟수 추가
+        
         } catch (InfluxException e) {
             // log.error("InfluxDB 배치 쓰기 실패: {} - 상태 코드: {}, 메시지: {}",
             // points.size(), e.status(), e.getMessage(), e);
