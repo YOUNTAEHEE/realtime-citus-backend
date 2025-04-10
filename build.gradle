@@ -48,12 +48,12 @@ dependencies {
     implementation 'com.digitalpetri.modbus:modbus-master-tcp:1.2.0'  
 
 	//influx db
-	  implementation "com.influxdb:influxdb-client-java:6.10.0"
-	// implementation 'com.influxdb:influxdb-client-java:6.12.0'
+	//   implementation "com.influxdb:influxdb-client-java:6.10.0"
+	implementation 'com.influxdb:influxdb-client-java:6.12.0'
 	implementation 'com.influxdb:influxdb-client-core:6.12.0'
     implementation 'com.influxdb:influxdb-client-flux:6.12.0'
 implementation 'org.json:json:20231013'
-    implementation 'com.influxdb:flux-dsl:6.10.0'
+    implementation 'com.influxdb:flux-dsl:6.12.0'
 
 // OPC UA 의존성 추가 (Eclipse Milo)
 implementation 'org.eclipse.milo:sdk-client:0.6.8'
