@@ -457,11 +457,15 @@ public class OpcuaService {
     @PreDestroy
     public void cleanup() {
         stopDataCollection();
+        if (collectorPool != null) collectorPool.shutdownNow(); // 수집 풀 종료
+        if (saveExecutor != null) saveExecutor.shutdownNow();
+        if (storageExecutor != null) storageExecutor.shutdownNow();
+        if (sendExecutor != null) sendExecutor.shutdownNow();
         opcuaClient.disconnect();
         webSocketHandler.clearAllSessions();
-        saveExecutor.shutdownNow();
-        sendExecutor.shutdownNow();
-        storageExecutor.shutdownNow(); // 💡 추가됨
+        // saveExecutor.shutdownNow();
+        // sendExecutor.shutdownNow();
+        // storageExecutor.shutdownNow(); // 💡 추가됨
     }
 
     // 디비저장 조회 아님//구독
