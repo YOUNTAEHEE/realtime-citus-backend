@@ -1,4 +1,3 @@
-
 package com.yth.realtime.service;
 
 import java.util.ArrayList;
@@ -7,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
@@ -163,6 +163,7 @@ public class OpcuaClient {
      */
     public Map<String, Object> readGroupValues(String groupName) {
         Map<String, Object> result = new LinkedHashMap<>();
+        long startTime = System.nanoTime(); // 메서드 시작 시간
 
         if (!connected) {
             log.warn("OPC UA 서버에 연결되어 있지 않습니다");
@@ -183,33 +184,43 @@ public class OpcuaClient {
             return result;
         }
 
-        try {
-            List<NodeId> nodeIdList = new ArrayList<>(nodes.values());
-            List<NodeId> validNodeIdList = nodeIdList.stream()
-                    .filter(java.util.Objects::nonNull)
-                    .collect(Collectors.toList());
+        List<NodeId> validNodeIdList = new ArrayList<>();
+        List<String> orderedVarNames = new ArrayList<>();
+        Map<NodeId, String> nodeIdToVarNameMap = new HashMap<>();
 
-            if (validNodeIdList.isEmpty()) {
-                log.warn("그룹 '{}'에 유효한 NodeId가 없습니다.", groupName);
-                result.put("error", "유효한 NodeId 없음");
-                return result;
+        for (Map.Entry<String, NodeId> entry : nodes.entrySet()) {
+            if (entry.getValue() != null) {
+                validNodeIdList.add(entry.getValue());
+                orderedVarNames.add(entry.getKey());
+                nodeIdToVarNameMap.put(entry.getValue(), entry.getKey());
+            } else {
+                result.put(entry.getKey(), "NodeId 파싱 오류");
+                log.warn("NodeId for tag '{}' was null (parsing failed). Skipping read.", entry.getKey());
             }
+        }
 
+        if (validNodeIdList.isEmpty()) {
+            log.warn("그룹 '{}'에 유효한 NodeId가 없습니다.", groupName);
+            result.put("error", "유효한 NodeId 없음");
+            return result;
+        }
+
+        try {
             log.debug("Reading {} values for group '{}'", validNodeIdList.size(), groupName);
+            long readCallStartTime = System.nanoTime();
+
             List<DataValue> values = client.readValues(0, TimestampsToReturn.Both, validNodeIdList).get();
 
-            int validIndex = 0;
-            for (Map.Entry<String, NodeId> entry : nodes.entrySet()) {
-                String varName = entry.getKey();
-                NodeId nodeId = entry.getValue();
+            long readCallEndTime = System.nanoTime();
+            log.debug("OPC UA readValues() call took {} ms for {} items.",
+                    TimeUnit.NANOSECONDS.toMillis(readCallEndTime - readCallStartTime), validNodeIdList.size());
 
-                if (nodeId == null) {
-                    result.put(varName, "NodeId 파싱 오류");
-                    continue;
-                }
+            if (values.size() == validNodeIdList.size()) {
+                for (int i = 0; i < validNodeIdList.size(); i++) {
+                    NodeId nodeId = validNodeIdList.get(i);
+                    DataValue value = values.get(i);
+                    String varName = orderedVarNames.get(i);
 
-                if (validIndex < values.size()) {
-                    DataValue value = values.get(validIndex++);
                     if (value != null && value.getValue() != null && value.getStatusCode().isGood()) {
                         result.put(varName, value.getValue().getValue());
                     } else {
@@ -217,23 +228,29 @@ public class OpcuaClient {
                         log.warn("Failed to read or bad quality for tag '{}' (NodeId: {}). Status: {}",
                                 varName, nodeId, value != null ? value.getStatusCode() : "null DataValue");
                     }
-                } else {
-                    log.error("Mismatch between node list and read results for group '{}'", groupName);
-                    result.put(varName, "결과 불일치 오류");
                 }
+            } else {
+                log.error("Mismatch between requested NodeIds ({}) and received values ({}) for group '{}'.",
+                        validNodeIdList.size(), values.size(), groupName);
+                orderedVarNames.forEach(varName -> result.putIfAbsent(varName, "결과 개수 불일치 오류"));
+                result.put("error", "결과 개수 불일치 오류");
             }
+
         } catch (InterruptedException | ExecutionException e) {
-            log.error("그룹 {} 값 일괄 읽기 실패: {}", groupName, e.getMessage(), e);
+            log.error("그룹 {} 값 일괄 읽기 실패 (InterruptedException/ExecutionException): {}", groupName, e.getMessage(), e);
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            nodes.keySet().forEach(varName -> result.putIfAbsent(varName, "일괄 읽기 실패"));
-            result.put("error", "일괄 읽기 실패: " + e.getMessage());
+            orderedVarNames.forEach(varName -> result.putIfAbsent(varName, "일괄 읽기 실패(Exec)"));
+            result.put("error", "일괄 읽기 실패(Exec): " + e.getMessage());
         } catch (Exception e) {
             log.error("그룹 {} 값 일괄 읽기 중 예상치 못한 오류 발생: {}", groupName, e.getMessage(), e);
-            nodes.keySet().forEach(varName -> result.putIfAbsent(varName, "알 수 없는 오류"));
-            result.put("error", "알 수 없는 오류: " + e.getMessage());
+            orderedVarNames.forEach(varName -> result.putIfAbsent(varName, "알 수 없는 읽기 오류"));
+            result.put("error", "알 수 없는 읽기 오류: " + e.getMessage());
         }
+
+        long endTime = System.nanoTime();
+        log.trace("readGroupValues execution time: {} ms", TimeUnit.NANOSECONDS.toMillis(endTime - startTime));
 
         return result;
     }
