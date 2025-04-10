@@ -16,8 +16,6 @@ import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,13 +54,13 @@ public class OpcuaService {
     // 현재 CPU 코어 수 기반으로 워크 스틸링 풀 생성
     // ExecutorService dbSaveExecutor = Executors.newWorkStealingPool();
     // ExecutorService dbQueryExecutor = Executors.newWorkStealingPool();
-
+    ExecutorService collectorPool = Executors.newFixedThreadPool(4); // 수집 병렬 스레드 4개
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-    private final ExecutorService saveExecutor = Executors.newFixedThreadPool(4); // 저장 스레드
-    ExecutorService storageExecutor = Executors.newFixedThreadPool(8);
+    private final ExecutorService saveExecutor = Executors.newFixedThreadPool(8); // 저장 스레드
+    ExecutorService storageExecutor = Executors.newFixedThreadPool(16);
     // private final ExecutorService sendExecutor =
     // Executors.newSingleThreadExecutor(); // 전송 스레드
-    ExecutorService sendExecutor = Executors.newFixedThreadPool(3);
+    ExecutorService sendExecutor = Executors.newFixedThreadPool(1);
     private final BlockingQueue<TimestampedData> saveQueue = new LinkedBlockingQueue<>(1000);
     // private final BlockingQueue<LocalDateTime> sendQueue = new
     // LinkedBlockingQueue<>(1000);
@@ -200,67 +198,48 @@ public class OpcuaService {
         stopDataCollection(); // 중복 방지
 
         // ✅ 1. 수집 쓰레드 (5ms 간격 → saveQueue로 전달 - put 사용)
-        dataCollectionTask = scheduler.scheduleAtFixedRate(() -> {
-            long collectionCycleStartTime = System.currentTimeMillis(); // 사이클 시작 시간
-            try {
-                if (!opcuaClient.isConnected()) {
-                    log.warn("OPC UA 서버 연결 끊김 → 재연결 시도");
-                    if (autoReconnect)
-                        opcuaClient.connect();
-                    return;
+        for (int i = 0; i < 4; i++) {
+            collectorPool.submit(() -> {
+                while (!Thread.currentThread().isInterrupted()) {
+                    long collectionCycleStartTime = System.currentTimeMillis();
+                    try {
+                        if (!opcuaClient.isConnected()) {
+                            log.warn("OPC UA 서버 연결 끊김 → 재연결 시도");
+                            if (autoReconnect)
+                                opcuaClient.connect();
+                            Thread.sleep(100); // 연결 재시도 간격
+                            continue;
+                        }
+
+                        long readStartTime = System.currentTimeMillis();
+                        Map<String, Map<String, Object>> data = opcuaClient.readAllValues();
+                        long readEndTime = System.currentTimeMillis();
+
+                        // log.debug("스레드 {}: readAllValues() {} ms",
+                        // Thread.currentThread().getName(), readEndTime - readStartTime);
+
+                        LocalDateTime collectionTimestamp = LocalDateTime.now();
+                        saveQueue.put(new TimestampedData(data, collectionTimestamp));
+
+                        // 수집 주기 조절 (과부하 방지)
+                        Thread.sleep(5);
+
+                        long collectionCycleEndTime = System.currentTimeMillis();
+                        // log.debug("스레드 {}: 수집 사이클 완료. 총 {} ms",
+                        // Thread.currentThread().getName(), collectionCycleEndTime -
+                        // collectionCycleStartTime);
+
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    } catch (Exception e) {
+                        log.error("스레드 {} 수집 오류: {}", Thread.currentThread().getName(), e.getMessage(), e);
+                    }
                 }
+            });
+        }
 
-                // === OPC UA 데이터 읽기 ===
-                long readStartTime = System.currentTimeMillis();
-                Map<String, Map<String, Object>> data = opcuaClient.readAllValues();
-                long readEndTime = System.currentTimeMillis();
-                log.debug("OPC UA readAllValues() 소요 시간: {} ms", readEndTime - readStartTime); // 읽기 시간 로깅
-
-                // ============================================================
-                // === 추가된 로그: 수신된 원본 데이터 확인 ===
-                // ============================================================
-                if (data != null && !data.isEmpty()) {
-                    log.info("✅ OPC UA 데이터 수신 성공. 그룹 수: {}", data.size());
-                    // 예시: 첫 번째 그룹의 키(태그명) 일부 로깅 (너무 길지 않게)
-                    data.entrySet().stream().findFirst().ifPresent(entry -> {
-                        log.debug("  첫 번째 그룹 '{}' 데이터 샘플 키: {}", entry.getKey(),
-                                entry.getValue().keySet().stream().limit(10).collect(Collectors.joining(", ")));
-                        // 상세 값 로깅 (필요 시 주석 해제, 로그가 매우 길어질 수 있음)
-                        // log.trace(" 첫 번째 그룹 '{}' 상세 데이터: {}", entry.getKey(), entry.getValue());
-                    });
-                    // 모든 그룹의 키 로깅 (필요 시 주석 해제)
-                    // data.forEach((groupName, groupData) -> log.debug(" 그룹 '{}' 키: {}", groupName,
-                    // groupData.keySet()));
-
-                } else {
-                    // === 데이터가 비어 있거나 null인 경우 로그 ===
-                    log.warn("⚠ OPC UA 서버로부터 데이터를 읽어왔으나 비어있거나 null입니다.");
-                    // 여기서 바로 return 할지, 아니면 빈 상태라도 큐에 넣을지 결정 필요
-                    // 현재는 빈 상태라도 아래 로직으로 진행됨 (TimestampedData 생성 및 큐에 put)
-                }
-                // ============================================================
-
-                LocalDateTime collectionTimestamp = LocalDateTime.now(); // <<< 수집 직후 시간 기록
-                TimestampedData timestampedData = new TimestampedData(data, collectionTimestamp);
-
-                try {
-                    saveQueue.put(timestampedData); // 묶어서 큐에 넣기
-                } catch (InterruptedException e) {
-                    log.warn("데이터 저장 큐 대기 중 인터럽트 발생", e);
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-
-                // 전체 사이클 시간 로깅 (선택 사항)
-                long collectionCycleEndTime = System.currentTimeMillis();
-                log.debug("데이터 수집 사이클 완료. 총 소요 시간: {} ms", collectionCycleEndTime - collectionCycleStartTime);
-
-            } catch (Exception e) {
-                log.error("수집 오류: {}", e.getMessage(), e);
-            }
-        }, 0, 5, TimeUnit.MILLISECONDS);
-
-        log.info("✅ 수집 시작됨 (5ms 간격, put 방식으로 변경 - 데이터 유실 방지)");
+        log.info("✅ 수집 스레드 4개 시작됨 (병렬 수집)");
 
         // ✅ 2. 저장 스레드 (조회 제거, sendQueue에 타임스탬프 put)
         // for (int i = 0; i < 4; i++) {
@@ -383,43 +362,43 @@ public class OpcuaService {
 
         // log.info("저장 스레드 종료됨 (ExecutorService 기반 병렬 처리)");
         // });
-        // for (int i = 0; i < 4; i++) {
-        saveExecutor.submit(() -> {
-            while (!Thread.currentThread().isInterrupted()) {
-                try {
-                    List<TimestampedData> batch = new ArrayList<>();
-                    saveQueue.drainTo(batch, 50);
+        for (int i = 0; i < 8; i++) {
+            saveExecutor.submit(() -> {
+                while (!Thread.currentThread().isInterrupted()) {
+                    try {
+                        List<TimestampedData> batch = new ArrayList<>();
+                        saveQueue.drainTo(batch, 100);
 
-                    if (batch.isEmpty()) {
-                        Thread.sleep(5);
-                        continue;
-                    }
+                        if (batch.isEmpty()) {
+                            Thread.sleep(5);
+                            continue;
+                        }
 
-                    for (TimestampedData data : batch) {
-                        storageExecutor.submit(() -> {
-                            try {
-                                saveToInfluxDB(data.getData(), data.getTimestamp());
+                        for (TimestampedData data : batch) {
+                            storageExecutor.submit(() -> {
+                                try {
+                                    saveToInfluxDB(data.getData(), data.getTimestamp());
 
-                                // ✅ 중복된 timestamp가 큐에 들어가지 않도록 처리
-                                if (seenTimestamps.add(data.getTimestamp())) {
-                                    sendQueue.put(data.getTimestamp()); // 새 타임스탬프만 큐에 넣음
+                                    // ✅ 중복된 timestamp가 큐에 들어가지 않도록 처리
+                                    if (seenTimestamps.add(data.getTimestamp())) {
+                                        sendQueue.put(data.getTimestamp()); // 새 타임스탬프만 큐에 넣음
+                                    }
+
+                                } catch (Exception e) {
+                                    log.error("저장 중 오류", e);
                                 }
+                            });
+                        }
 
-                            } catch (Exception e) {
-                                log.error("저장 중 오류", e);
-                            }
-                        });
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    } catch (Exception e) {
+                        log.error("배치 저장 오류", e);
                     }
-
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                } catch (Exception e) {
-                    log.error("배치 저장 오류", e);
                 }
-            }
-        });
-        // }
+            });
+        }
         // ✅ 3. 전송 스레드 (큐에서 타임스탬프 꺼낸 후 DB 조회 및 전송)
         // sendExecutor.submit(() -> {
         // while (!Thread.currentThread().isInterrupted()) {
@@ -444,25 +423,27 @@ public class OpcuaService {
         // }
         // log.info("전송 스레드 종료됨.");
         // });
-        sendExecutor.submit(() -> {
-            while (!Thread.currentThread().isInterrupted()) {
-                try {
-                    LocalDateTime ts = sendQueue.take(); // 트리거 타임스탬프 꺼냄
+        // for (int i = 0; i < 2; i++) {
+            sendExecutor.submit(() -> {
+                while (!Thread.currentThread().isInterrupted()) {
+                    try {
+                        LocalDateTime ts = sendQueue.take(); // 트리거 타임스탬프 꺼냄
 
-                    // ✅ 전송이 끝났으면 중복 체크용 Set에서 제거
-                    seenTimestamps.remove(ts);
+                        // ✅ 전송이 끝났으면 중복 체크용 Set에서 제거
+                        seenTimestamps.remove(ts);
 
-                    Map<String, Object> latest = influxDBService.getLatestOpcuaData("all");
-                    sendDataToFrontend(latest);
+                        Map<String, Object> latest = influxDBService.getLatestOpcuaData("all");
+                        sendDataToFrontend(latest);
 
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                } catch (Exception e) {
-                    log.error("조회/전송 오류", e);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    } catch (Exception e) {
+                        log.error("조회/전송 오류", e);
+                    }
                 }
-            }
-        });
+            });
+        // }
 
     }
 
@@ -609,17 +590,20 @@ public class OpcuaService {
                 }
             }
 
-            // 타임스탬프 설정
-            // Instant saveTime = Instant.now(); // 현재 시간 사용
-            // LocalDateTime → Instant로 변환해서 저장
-            Instant saveTime = timestamp.atZone(ZoneId.systemDefault()).toInstant();
-            dataPoint.time(saveTime, WritePrecision.NS);
+            if (dataPoint.hasFields()) { // 필드가 하나라도 있는지 확인
+                Instant saveTime = timestamp.atZone(ZoneId.systemDefault()).toInstant();
+                dataPoint.time(saveTime, WritePrecision.NS);
 
-            // 저장
-            WriteApiBlocking writeApi = influxDBService.getWriteApi();
-            writeApi.writePoint(influxDBService.getBucket(), influxDBService.getOrg(), dataPoint);
+                // <<< 추가: 쓰기 직전 데이터 로깅 >>>
+                log.debug("InfluxDB 쓰기 시도: {}", dataPoint.toLineProtocol());
 
-            log.info("OPC UA 데이터 직접 저장 완료: 필드 수={}", flattenedData.size());
+                WriteApiBlocking writeApi = influxDBService.getWriteApi();
+                writeApi.writePoint(influxDBService.getBucket(), influxDBService.getOrg(), dataPoint);
+
+                log.info("OPC UA 데이터 직접 저장 완료: 시간={}, ", timestamp); // 필드 수 로깅 변경
+            } else {
+                log.warn("저장할 유효한 필드가 없어 InfluxDB 쓰기를 건너<0xEB><0x9C><0x8D>니다.");
+            }
 
         } catch (Exception e) {
             log.error("InfluxDB 데이터 저장 실패: {}", e.getMessage(), e);
