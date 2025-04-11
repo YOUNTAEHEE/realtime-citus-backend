@@ -140,7 +140,7 @@ public class ModbusTest {
     //     // generateAndSaveAllAtOnce(1); // 주의: 메모리 리스트 생성 후 한번에 저장 (5434 행)
     // }
 
-    @Scheduled(fixedRate = 1000) // <<< 모드 2: 반복 실행 (활성화하려면 주석 해제)
+    // @Scheduled(fixedRate = 1000) // <<< 모드 2: 반복 실행 (활성화하려면 주석 해제)
     public void repeatDummyDataGeneration() {
         long currentAttempt = dummyDataGenerationCounter.incrementAndGet();
         log.info("===== @Scheduled: 더미 데이터 반복 생성 및 저장 시작 (시도 #{}) =====", currentAttempt);

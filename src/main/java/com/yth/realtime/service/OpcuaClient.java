@@ -310,7 +310,9 @@ public class OpcuaClient {
     private final Map<String, Map<String, NodeId>> groupedNodes = new HashMap<>();
     private final AtomicLong clientHandleCounter = new AtomicLong(1);
     // OPC UA 서버 주소 및 노드 ID 설정
-    private static final String SERVER_URL = "opc.tcp://192.168.10.35:4840";
+    // private static final String SERVER_URL = "opc.tcp://192.168.10.35:4840";
+    private static final String SERVER_URL = "opc.tcp://192.168.0.77:4840";
+
     private static final Map<String, String> OBJECT_NODES = Map.of(
             // "OPC_UA", "ns=4;s=|var|CODESYS Control Win V3 x64.Application.PLC_PRG",
             // "PLC_PRG", "ns=4;s=|var|CODESYS Control Win V3 x64.FRC1.PLC_PRG",

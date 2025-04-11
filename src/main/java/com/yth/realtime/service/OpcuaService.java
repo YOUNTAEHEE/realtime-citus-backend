@@ -7,12 +7,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
+// import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingDeque;
+// import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -24,13 +23,13 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
-import com.influxdb.client.WriteApiBlocking;
 import com.influxdb.client.domain.WritePrecision;
 import com.influxdb.client.write.Point;
 import com.yth.realtime.controller.OpcuaWebSocketHandler;
 import com.yth.realtime.event.OpcuaDataEvent;
 import com.yth.realtime.event.StartOpcuaCollectionEvent;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 
 @Service
@@ -68,9 +67,11 @@ public class OpcuaService {
     private ScheduledFuture<?> dataCollectionTask;
     private boolean autoReconnect = true;
     // 중복 방지용 Set
-    private final Set<LocalDateTime> seenTimestamps = ConcurrentHashMap.newKeySet();
+    // private final Set<LocalDateTime> seenTimestamps =
+    // ConcurrentHashMap.newKeySet();
     // 중복 제거가 가능한 큐
-    private final LinkedBlockingDeque<LocalDateTime> sendQueue = new LinkedBlockingDeque<>(1000);
+    // private final LinkedBlockingDeque<LocalDateTime> sendQueue = new
+    // LinkedBlockingDeque<>(1000);
 
     @Autowired
     public OpcuaService(OpcuaClient opcuaClient, OpcuaWebSocketHandler opcuaWebSocketHandler,
@@ -79,6 +80,7 @@ public class OpcuaService {
         this.webSocketHandler = opcuaWebSocketHandler;
         this.influxDBService = opcuaInfluxDBService;
         this.eventPublisher = eventPublisher;
+        // 비동기 Write API 생성
     }
 
     /**
@@ -370,7 +372,7 @@ public class OpcuaService {
                         saveQueue.drainTo(batch, 100);
 
                         if (batch.isEmpty()) {
-                            Thread.sleep(5);
+                            Thread.sleep(10);
                             continue;
                         }
 
@@ -380,25 +382,31 @@ public class OpcuaService {
                                     saveToInfluxDB(data.getData(), data.getTimestamp());
 
                                     // ✅ 중복된 timestamp가 큐에 들어가지 않도록 처리
-                                    if (seenTimestamps.add(data.getTimestamp())) {
-                                        sendQueue.put(data.getTimestamp()); // 새 타임스탬프만 큐에 넣음
-                                    }
+                                    // if (seenTimestamps.add(data.getTimestamp())) {
+                                    // sendQueue.put(data.getTimestamp()); // 새 타임스탬프만 큐에 넣음
+                                    // }
 
                                 } catch (Exception e) {
-                                    log.error("저장 중 오류", e);
+                                    // saveToInfluxDB 내부 오류 또는 submit 자체 오류 처리
+                                    log.error("저장 작업 제출 또는 실행 중 오류 (Timestamp: {}): {}",
+                                            data != null ? data.getTimestamp() : "unknown", e.getMessage(), e);
                                 }
                             });
                         }
 
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
+                        log.warn("saveExecutor 스레드 인터럽트 발생. 종료 중...", e);
                         break;
                     } catch (Exception e) {
-                        log.error("배치 저장 오류", e);
+                        // drainTo, submit 등에서 발생 가능한 예외 처리
+                        log.error("saveExecutor 배치 처리 루프 오류: {}", e.getMessage(), e);
                     }
                 }
+                log.info("saveExecutor 스레드 종료됨.");
             });
         }
+
         // ✅ 3. 전송 스레드 (큐에서 타임스탬프 꺼낸 후 DB 조회 및 전송)
         // sendExecutor.submit(() -> {
         // while (!Thread.currentThread().isInterrupted()) {
@@ -424,25 +432,25 @@ public class OpcuaService {
         // log.info("전송 스레드 종료됨.");
         // });
         // for (int i = 0; i < 2; i++) {
-            sendExecutor.submit(() -> {
-                while (!Thread.currentThread().isInterrupted()) {
-                    try {
-                        LocalDateTime ts = sendQueue.take(); // 트리거 타임스탬프 꺼냄
+        // sendExecutor.submit(() -> {
+        // while (!Thread.currentThread().isInterrupted()) {
+        // try {
+        // LocalDateTime ts = sendQueue.take(); // 트리거 타임스탬프 꺼냄
 
-                        // ✅ 전송이 끝났으면 중복 체크용 Set에서 제거
-                        seenTimestamps.remove(ts);
+        // // ✅ 전송이 끝났으면 중복 체크용 Set에서 제거
+        // // seenTimestamps.remove(ts);
 
-                        Map<String, Object> latest = influxDBService.getLatestOpcuaData("all");
-                        sendDataToFrontend(latest);
+        // // Map<String, Object> latest = influxDBService.getLatestOpcuaData("all");
+        // // sendDataToFrontend(latest);
 
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    } catch (Exception e) {
-                        log.error("조회/전송 오류", e);
-                    }
-                }
-            });
+        // } catch (InterruptedException e) {
+        // Thread.currentThread().interrupt();
+        // break;
+        // } catch (Exception e) {
+        // log.error("조회/전송 오류", e);
+        // }
+        // }
+        // });
         // }
 
     }
@@ -457,15 +465,23 @@ public class OpcuaService {
     @PreDestroy
     public void cleanup() {
         stopDataCollection();
-        if (collectorPool != null) collectorPool.shutdownNow(); // 수집 풀 종료
-        if (saveExecutor != null) saveExecutor.shutdownNow();
-        if (storageExecutor != null) storageExecutor.shutdownNow();
-        if (sendExecutor != null) sendExecutor.shutdownNow();
+        if (collectorPool != null)
+            collectorPool.shutdownNow(); // 수집 풀 종료
+        if (saveExecutor != null)
+            saveExecutor.shutdownNow();
+        if (storageExecutor != null)
+            storageExecutor.shutdownNow();
+        // if (sendExecutor != null)
+        // sendExecutor.shutdownNow();
         opcuaClient.disconnect();
         webSocketHandler.clearAllSessions();
         // saveExecutor.shutdownNow();
         // sendExecutor.shutdownNow();
         // storageExecutor.shutdownNow(); // 💡 추가됨
+        if (influxDBService.getAsyncWriteApi() != null) { // Null 체크 추가
+            influxDBService.getAsyncWriteApi().flush(); // 남은 데이터 저장
+            influxDBService.getAsyncWriteApi().close();
+        }
     }
 
     // 디비저장 조회 아님//구독
@@ -541,76 +557,224 @@ public class OpcuaService {
     /**
      * InfluxDB에 데이터 저장
      */
+    // private void saveToInfluxDB(Map<String, Map<String, Object>> allData,
+    // LocalDateTime timestamp) {
+    // // ❗ [로그 추가] 메서드 시작 및 입력 데이터 확인
+    // log.info("[SAVE_DB] Timestamp: {}, Received raw data size: {}", timestamp,
+    // (allData != null ? allData.size() : "null"));
+    // if (allData == null || allData.isEmpty()) {
+    // log.warn("[SAVE_DB] Timestamp: {}, Raw data is null or empty. Skipping
+    // save.", timestamp);
+    // return;
+    // }
+
+    // try {
+    // // 데이터를 평탄화
+    // Map<String, Object> flattenedData = flattenData(allData);
+    // // ❗ [로그 추가] 평탄화 결과 확인
+    // log.debug("[SAVE_DB] Timestamp: {}, Flattened data size: {}", timestamp,
+    // flattenedData.size());
+    // // log.trace("[SAVE_DB] Timestamp: {}, Flattened data: {}", timestamp,
+    // // flattenedData); // 필요시 상세 데이터 로깅
+
+    // if (flattenedData.isEmpty()) {
+    // log.warn("[SAVE_DB] Timestamp: {}, Flattened data is empty. Skipping save.",
+    // timestamp);
+    // return;
+    // }
+
+    // Point dataPoint = Point.measurement("opcua_data")
+    // .addTag("system", "PCS_System");
+
+    // int addedFieldsCount = 0; // ❗ 필드 추가 개수 카운트
+    // for (Map.Entry<String, Object> entry : flattenedData.entrySet()) {
+    // String fieldName = entry.getKey();
+    // Object value = entry.getValue();
+    // String originalFieldName = fieldName; // 로깅을 위해 원본 이름 저장
+
+    // // 필드명 정리
+    // fieldName = fieldName.replaceAll("[^a-zA-Z0-9_]", "_");
+
+    // if (value == null) {
+    // log.trace("[SAVE_DB] Timestamp: {}, Skipping null value for field: {}",
+    // timestamp,
+    // originalFieldName);
+    // continue;
+    // }
+
+    // // ❗ [로그 추가] 필드 추가 시도 로깅 (TRACE 레벨)
+    // log.trace(
+    // "[SAVE_DB] Timestamp: {}, Attempting to add field: '{}' (cleaned: '{}'),
+    // Value: '{}' (Type: {})",
+    // timestamp, originalFieldName, fieldName, value,
+    // value.getClass().getSimpleName());
+
+    // boolean fieldAdded = false;
+    // try {
+    // if (value instanceof Double) {
+    // Double doubleValue = (Double) value;
+    // if (!Double.isNaN(doubleValue) && !Double.isInfinite(doubleValue)) {
+    // dataPoint.addField(fieldName, doubleValue);
+    // fieldAdded = true;
+    // } else {
+    // log.warn(
+    // "[SAVE_DB] Timestamp: {}, Skipping invalid Double value (NaN or Infinite) for
+    // field: {}",
+    // timestamp, originalFieldName);
+    // }
+    // } else if (value instanceof Integer) {
+    // dataPoint.addField(fieldName, (Integer) value);
+    // fieldAdded = true;
+    // } else if (value instanceof Long) {
+    // dataPoint.addField(fieldName, (Long) value);
+    // fieldAdded = true;
+    // } else if (value instanceof Float) {
+    // Float floatValue = (Float) value;
+    // if (!Float.isNaN(floatValue) && !Float.isInfinite(floatValue)) {
+    // dataPoint.addField(fieldName, floatValue); // Float 처리
+    // fieldAdded = true;
+    // } else {
+    // log.warn(
+    // "[SAVE_DB] Timestamp: {}, Skipping invalid Float value (NaN or Infinite) for
+    // field: {}",
+    // timestamp, originalFieldName);
+    // }
+    // } else if (value instanceof String) {
+    // String strValue = (String) value;
+    // if (!strValue.isEmpty()) {
+    // try {
+    // double numValue = Double.parseDouble(strValue);
+    // if (!Double.isNaN(numValue) && !Double.isInfinite(numValue)) {
+    // dataPoint.addField(fieldName, numValue);
+    // fieldAdded = true;
+    // } else {
+    // log.warn(
+    // "[SAVE_DB] Timestamp: {}, Skipping invalid Double value (NaN or Infinite)
+    // parsed from string for field: {}",
+    // timestamp, originalFieldName);
+    // }
+    // } catch (NumberFormatException e) {
+    // // 문자열을 숫자로 변환 실패 시, 문자열 그대로 저장할지 결정
+    // // dataPoint.addField(fieldName, strValue); // 필요하다면 주석 해제
+    // // fieldAdded = true;
+    // log.warn(
+    // "[SAVE_DB] Timestamp: {}, Could not parse string '{}' to double for field
+    // '{}'. Skipping or storing as string.",
+    // timestamp, strValue, originalFieldName);
+    // }
+    // }
+    // } else if (value instanceof Boolean) { // Boolean 타입 처리
+    // dataPoint.addField(fieldName, (Boolean) value);
+    // fieldAdded = true;
+    // } else {
+    // // 지원하지 않는 타입 로깅
+    // log.warn("[SAVE_DB] Timestamp: {}, Unsupported data type '{}' for field '{}'.
+    // Skipping.",
+    // timestamp, value.getClass().getSimpleName(), originalFieldName);
+    // }
+
+    // if (fieldAdded) {
+    // addedFieldsCount++;
+    // log.trace("[SAVE_DB] Timestamp: {}, Successfully added field: '{}', Value:
+    // {}", timestamp,
+    // fieldName, value);
+    // }
+    // } catch (Exception fieldEx) {
+    // log.error("[SAVE_DB] Timestamp: {}, Error adding field '{}' with value '{}':
+    // {}", timestamp,
+    // fieldName, value, fieldEx.getMessage(), fieldEx);
+    // }
+    // } // end of for loop
+
+    // // ❗ [로그 추가] 최종 추가된 필드 수 확인
+    // log.debug("[SAVE_DB] Timestamp: {}, Total valid fields added to Point: {}",
+    // timestamp, addedFieldsCount);
+
+    // if (addedFieldsCount > 0) { // ❗ 카운터로 확인
+    // Instant saveTime = timestamp.atZone(ZoneId.systemDefault()).toInstant();
+    // dataPoint.time(saveTime, WritePrecision.NS);
+
+    // // ❗ [로그 추가] DB 쓰기 직전 데이터 (Line Protocol) 로깅
+    // log.debug("[SAVE_DB] Timestamp: {}, Attempting InfluxDB write. Point data:
+    // {}", timestamp,
+    // dataPoint.toLineProtocol());
+
+    // WriteApiBlocking writeApi = influxDBService.getWriteApi();
+    // try {
+    // writeApi.writePoint(influxDBService.getBucket(), influxDBService.getOrg(),
+    // dataPoint);
+    // // ❗ [로그 추가] DB 쓰기 성공
+    // log.info("[SAVE_DB] Timestamp: {}, InfluxDB write successful.", timestamp);
+    // } catch (Exception writeEx) {
+    // // ❗ [로그 추가] DB 쓰기 실패 시 예외 상세 로깅
+    // log.error("[SAVE_DB] Timestamp: {}, InfluxDB writePoint failed: {}",
+    // timestamp,
+    // writeEx.getMessage(), writeEx);
+    // // 여기서 예외를 다시 던질지, 아니면 로깅만 할지 결정 필요 (현재는 로깅만 함)
+    // throw writeEx; // ❗ 디버깅 위해 예외를 다시 던져서 상위 catch 블록에서 잡도록 변경 (원인 파악 후 제거 가능)
+    // }
+
+    // // 쓰기 성공 후 타임스탬프 처리 로직은 그대로 유지
+    // if (seenTimestamps.add(timestamp)) {
+    // try {
+    // sendQueue.put(timestamp);
+    // } catch (InterruptedException e) {
+    // Thread.currentThread().interrupt();
+    // log.warn("[SAVE_DB] Interrupted while putting timestamp to sendQueue after
+    // successful write.",
+    // e);
+    // }
+    // }
+
+    // } else {
+    // log.warn("[SAVE_DB] Timestamp: {}, No valid fields were added. Skipping
+    // InfluxDB write.", timestamp);
+    // }
+
+    // } catch (Exception e) {
+    // // ❗ [로그 추가] saveToInfluxDB 메서드 전체를 감싸는 catch 블록
+    // log.error("[SAVE_DB] Timestamp: {}, Unhandled exception in saveToInfluxDB:
+    // {}", timestamp, e.getMessage(),
+    // e);
+    // // 이 예외가 발생하면 storageExecutor 스레드가 종료될 수 있음
+    // }
+    // }
+
     private void saveToInfluxDB(Map<String, Map<String, Object>> allData, LocalDateTime timestamp) {
+        if (allData == null || allData.isEmpty())
+            return;
+
         try {
-            log.info("OPC UA 데이터 저장 시작: 시간={}, 그룹 수={}", timestamp, allData.size());
-
-            // 데이터를 평탄화
             Map<String, Object> flattenedData = flattenData(allData);
-
-            if (flattenedData.isEmpty()) {
-                log.warn("저장할 데이터가 없습니다");
+            if (flattenedData.isEmpty())
                 return;
-            }
 
-            // InfluxDBMeasurement 사용 대신 Point 직접 사용
-            Point dataPoint = Point.measurement("opcua_data")
-                    .addTag("system", "PCS_System");
+            Point point = Point.measurement("opcua_data")
+                    .addTag("system", "PCS_System")
+                    .time(timestamp.atZone(ZoneId.systemDefault()).toInstant(), WritePrecision.NS);
 
-            // 필드 추가
             for (Map.Entry<String, Object> entry : flattenedData.entrySet()) {
-                String fieldName = entry.getKey();
+                String field = entry.getKey().replaceAll("[^a-zA-Z0-9_]", "_");
                 Object value = entry.getValue();
 
-                // 필드명 정리
-                fieldName = fieldName.replaceAll("[^a-zA-Z0-9_]", "_");
-
-                if (value == null)
-                    continue;
-
                 if (value instanceof Number) {
-                    if (value instanceof Double) {
-                        Double doubleValue = (Double) value;
-                        if (!Double.isNaN(doubleValue) && !Double.isInfinite(doubleValue)) {
-                            dataPoint.addField(fieldName, doubleValue);
-                        }
-                    } else if (value instanceof Integer) {
-                        dataPoint.addField(fieldName, (Integer) value);
-                    } else if (value instanceof Long) {
-                        dataPoint.addField(fieldName, (Long) value);
-                    } else if (value instanceof Float) {
-                        dataPoint.addField(fieldName, (Float) value);
-                    }
-                } else if (value instanceof String) {
-                    String strValue = (String) value;
-                    if (!strValue.isEmpty()) {
-                        try {
-                            double numValue = Double.parseDouble(strValue);
-                            dataPoint.addField(fieldName, numValue);
-                        } catch (NumberFormatException e) {
-                            dataPoint.addField(fieldName, strValue);
-                        }
-                    }
+                    point.addField(field, ((Number) value).doubleValue());
+                } else if (value instanceof Boolean) {
+                    point.addField(field, (Boolean) value);
                 }
             }
 
-            if (dataPoint.hasFields()) { // 필드가 하나라도 있는지 확인
-                Instant saveTime = timestamp.atZone(ZoneId.systemDefault()).toInstant();
-                dataPoint.time(saveTime, WritePrecision.NS);
+            // ✅ 비동기 저장으로 변경
+            influxDBService.getAsyncWriteApi().writePoint(
+                    influxDBService.getBucket(),
+                    influxDBService.getOrg(),
+                    point);
 
-                // <<< 추가: 쓰기 직전 데이터 로깅 >>>
-                log.debug("InfluxDB 쓰기 시도: {}", dataPoint.toLineProtocol());
-
-                WriteApiBlocking writeApi = influxDBService.getWriteApi();
-                writeApi.writePoint(influxDBService.getBucket(), influxDBService.getOrg(), dataPoint);
-
-                log.info("OPC UA 데이터 직접 저장 완료: 시간={}, ", timestamp); // 필드 수 로깅 변경
-            } else {
-                log.warn("저장할 유효한 필드가 없어 InfluxDB 쓰기를 건너<0xEB><0x9C><0x8D>니다.");
-            }
+            // 저장 확인
+            // log.debug("✅ 비동기 InfluxDB 저장 요청 완료: {}", timestamp);
 
         } catch (Exception e) {
-            log.error("InfluxDB 데이터 저장 실패: {}", e.getMessage(), e);
+            log.error("❌ InfluxDB 비동기 저장 중 오류: {}", e.getMessage(), e);
         }
     }
 
@@ -670,6 +834,18 @@ public class OpcuaService {
      */
     public boolean isAutoReconnect() {
         return autoReconnect;
+    }
+
+    @PostConstruct
+    public void initializeAndStartCollection() {
+        log.info("애플리케이션 시작됨. OPC UA 연결 및 데이터 수집 시작 시도...");
+        if (connect()) { // OPC UA 서버 연결 시도
+            log.info("OPC UA 서버 연결 성공.");
+            startDataCollection(); // 데이터 수집 시작
+        } else {
+            log.error("OPC UA 서버 초기 연결 실패. 데이터 수집을 시작할 수 없습니다. (자동 재연결은 시도될 수 있음)");
+            // 연결 실패 시 추가적인 처리 (예: 재시도 로직, 상태 알림 등) 필요 시 여기에 구현
+        }
     }
 
     @EventListener

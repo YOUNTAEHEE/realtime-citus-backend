@@ -23,14 +23,14 @@ import com.influxdb.client.write.Point;
 import com.influxdb.query.FluxRecord;
 import com.influxdb.query.FluxTable;
 import com.yth.realtime.model.InfluxDBMeasurement;
-
+import com.influxdb.client.WriteApi;
 @Service
 @Transactional
 public class OpcuaInfluxDBService {
     private static final Logger log = LoggerFactory.getLogger(OpcuaInfluxDBService.class);
 
     private final InfluxDBClient influxDBClient;
-
+    private final WriteApi asyncWriteApi;
     @Value("${influxdb.bucket}")
     private String bucket;
 
@@ -40,6 +40,7 @@ public class OpcuaInfluxDBService {
     public OpcuaInfluxDBService(InfluxDBClient influxDBClient) {
         this.influxDBClient = influxDBClient;
         log.info("OPC UA InfluxDB 서비스 초기화 완료");
+        this.asyncWriteApi = influxDBClient.makeWriteApi(); // 비동기 Write API 생성
     }
 
     
@@ -108,7 +109,7 @@ public class OpcuaInfluxDBService {
 
         String query = String.format(
                 "from(bucket: \"%s\") " +
-                        "|> range(start: -5m) " +
+                        "|> range(start: -10m) " +
                         "|> filter(fn: (r) => r._measurement == \"opcua_data\" %s) " +
                         "|> pivot(rowKey:[\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\") " +
                         "|> sort(columns: [\"_time\"], desc: true) " +
@@ -158,5 +159,7 @@ public class OpcuaInfluxDBService {
     public String getOrg() {
         return this.organization;
     }
-
+    public WriteApi getAsyncWriteApi() {
+        return asyncWriteApi;
+    }
 }
