@@ -281,25 +281,15 @@ import java.util.stream.Collectors;
 
 import org.eclipse.milo.opcua.sdk.client.OpcUaClient;
 import org.eclipse.milo.opcua.sdk.client.api.config.OpcUaClientConfigBuilder;
-import org.eclipse.milo.opcua.sdk.client.api.subscriptions.UaSubscription;
 import org.eclipse.milo.opcua.stack.client.DiscoveryClient;
-import org.eclipse.milo.opcua.stack.core.AttributeId;
 import org.eclipse.milo.opcua.stack.core.UaException;
 import org.eclipse.milo.opcua.stack.core.types.builtin.DataValue;
 import org.eclipse.milo.opcua.stack.core.types.builtin.NodeId;
-import org.eclipse.milo.opcua.stack.core.types.builtin.QualifiedName;
-import org.eclipse.milo.opcua.stack.core.types.builtin.unsigned.Unsigned;
-import org.eclipse.milo.opcua.stack.core.types.enumerated.MonitoringMode;
 import org.eclipse.milo.opcua.stack.core.types.enumerated.TimestampsToReturn;
 import org.eclipse.milo.opcua.stack.core.types.structured.EndpointDescription;
-import org.eclipse.milo.opcua.stack.core.types.structured.MonitoredItemCreateRequest;
-import org.eclipse.milo.opcua.stack.core.types.structured.MonitoringParameters;
-import org.eclipse.milo.opcua.stack.core.types.structured.ReadValueId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-
-import com.yth.realtime.client.ValueUpdateHandler;
 
 @Component
 public class OpcuaClient {
@@ -310,8 +300,9 @@ public class OpcuaClient {
     private final Map<String, Map<String, NodeId>> groupedNodes = new HashMap<>();
     private final AtomicLong clientHandleCounter = new AtomicLong(1);
     // OPC UA 서버 주소 및 노드 ID 설정
+    private static final String SERVER_URL = "opc.tcp://CIT-JIN:4840";
     // private static final String SERVER_URL = "opc.tcp://192.168.10.35:4840";
-    private static final String SERVER_URL = "opc.tcp://192.168.0.77:4840";
+    // private static final String SERVER_URL = "opc.tcp://192.168.0.77:4840";
 
     private static final Map<String, String> OBJECT_NODES = Map.of(
             // "OPC_UA", "ns=4;s=|var|CODESYS Control Win V3 x64.Application.PLC_PRG",
