@@ -771,7 +771,7 @@ public class OpcuaService {
                     point);
 
             // 저장 확인
-            log.debug("✅ 비동기 InfluxDB 저장 요청 완료: {}", timestamp);
+            // log.debug("✅ 비동기 InfluxDB 저장 요청 완료: {}", timestamp);
 
         } catch (Exception e) {
             log.error("❌ InfluxDB 비동기 저장 중 오류: {}", e.getMessage(), e);
