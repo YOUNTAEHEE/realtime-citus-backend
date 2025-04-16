@@ -653,6 +653,7 @@ public class OpcuaService {
         for (int i = 0; i < 4; i++) {
             collectorPool.submit(() -> {
                 while (!Thread.currentThread().isInterrupted()) {
+                    long cycleStartTimeNanos = System.nanoTime(); // <<<--- 사이클 시작 시간 (나노초)
                     long collectionCycleStartTime = System.currentTimeMillis();
                     try {
                         if (!opcuaClient.isConnected()) {
@@ -680,6 +681,13 @@ public class OpcuaService {
                         // log.debug("스레드 {}: 수집 사이클 완료. 총 {} ms",
                         // Thread.currentThread().getName(), collectionCycleEndTime -
                         // collectionCycleStartTime);
+
+                        //추가 로깅
+                        long cycleEndTimeNanos = System.nanoTime(); // <<<--- 사이클 종료 시간 (나노초)
+                        double cycleDurationMs = (cycleEndTimeNanos - cycleStartTimeNanos) / 1_000_000.0; // 밀리초 변환
+
+                        // 수집 주기 시간 로그 출력 (DEBUG 레벨 추천)
+                        log.debug("수집 주기 완료 (스레드 {}): {} ms", Thread.currentThread().getName(), cycleDurationMs);
 
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
@@ -1221,7 +1229,7 @@ public class OpcuaService {
                     point);
 
             // 저장 확인
-            // log.debug("✅ 비동기 InfluxDB 저장 요청 완료: {}", timestamp);
+            log.debug("✅ 비동기 InfluxDB 저장 요청 완료: {}", timestamp);
 
         } catch (Exception e) {
             log.error("❌ InfluxDB 비동기 저장 중 오류: {}", e.getMessage(), e);
