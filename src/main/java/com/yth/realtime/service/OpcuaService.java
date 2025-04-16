@@ -280,6 +280,8 @@ public class OpcuaService {
                         influxDBService.getBucket(),
                         influxDBService.getOrg(),
                         point);
+                // 저장 확인
+                log.debug("✅ 비동기 InfluxDB 저장 요청 완료: {}", timestamp);
             } else {
                 log.warn("[SAVE_DB] No valid fields found to write for timestamp {}. Skipping writePoint.", timestamp);
             }
@@ -447,10 +449,11 @@ public class OpcuaService {
 
 
 
-//슬립
+
+// 슬립
+
 // package com.yth.realtime.service;
 
-// import java.time.Instant;
 // import java.time.LocalDateTime;
 // import java.time.ZoneId;
 // import java.util.ArrayList;
@@ -476,7 +479,6 @@ public class OpcuaService {
 // import com.influxdb.client.domain.WritePrecision;
 // import com.influxdb.client.write.Point;
 // import com.yth.realtime.controller.OpcuaWebSocketHandler;
-// import com.yth.realtime.event.OpcuaDataEvent;
 // import com.yth.realtime.event.StartOpcuaCollectionEvent;
 
 // import jakarta.annotation.PostConstruct;
@@ -495,14 +497,12 @@ public class OpcuaService {
 //     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 //     private final ExecutorService saveExecutor = Executors.newFixedThreadPool(8); // 저장 스레드
 //     ExecutorService storageExecutor = Executors.newFixedThreadPool(16);
-   
+
 //     ExecutorService sendExecutor = Executors.newFixedThreadPool(1);
 //     private final BlockingQueue<TimestampedData> saveQueue = new LinkedBlockingQueue<>(1000);
-   
 
 //     private ScheduledFuture<?> dataCollectionTask;
 //     private boolean autoReconnect = true;
-    
 
 //     @Autowired
 //     public OpcuaService(OpcuaClient opcuaClient, OpcuaWebSocketHandler opcuaWebSocketHandler,
@@ -513,8 +513,6 @@ public class OpcuaService {
 //         this.eventPublisher = eventPublisher;
 //         // 비동기 Write API 생성
 //     }
-
-    
 
 //     /**
 //      * OPC UA 서버 연결
@@ -529,11 +527,6 @@ public class OpcuaService {
 //     public void disconnect() {
 //         opcuaClient.disconnect();
 //     }
-
-//     /**
-//      * 데이터 수집 시작
-//      */
-   
 
 //     public void startDataCollection() {
 //         stopDataCollection(); // 중복 방지
@@ -571,7 +564,7 @@ public class OpcuaService {
 //                         // Thread.currentThread().getName(), collectionCycleEndTime -
 //                         // collectionCycleStartTime);
 
-//                         //추가 로깅
+//                         // 추가 로깅
 //                         long cycleEndTimeNanos = System.nanoTime(); // <<<--- 사이클 종료 시간 (나노초)
 //                         double cycleDurationMs = (cycleEndTimeNanos - cycleStartTimeNanos) / 1_000_000.0; // 밀리초 변환
 
@@ -590,7 +583,6 @@ public class OpcuaService {
 
 //         log.info("✅ 수집 스레드 4개 시작됨 (병렬 수집)");
 
-      
 //         for (int i = 0; i < 8; i++) {
 //             saveExecutor.submit(() -> {
 //                 while (!Thread.currentThread().isInterrupted()) {
@@ -634,8 +626,6 @@ public class OpcuaService {
 //             });
 //         }
 
-        
-
 //     }
 
 //     public void stopDataCollection() {
@@ -654,17 +644,15 @@ public class OpcuaService {
 //             saveExecutor.shutdownNow();
 //         if (storageExecutor != null)
 //             storageExecutor.shutdownNow();
-     
+
 //         opcuaClient.disconnect();
 //         webSocketHandler.clearAllSessions();
-      
+
 //         if (influxDBService.getAsyncWriteApi() != null) { // Null 체크 추가
 //             influxDBService.getAsyncWriteApi().flush(); // 남은 데이터 저장
 //             influxDBService.getAsyncWriteApi().close();
 //         }
 //     }
-
-   
 
 //     private void saveToInfluxDB(Map<String, Map<String, Object>> allData, LocalDateTime timestamp) {
 //         if (allData == null || allData.isEmpty())
