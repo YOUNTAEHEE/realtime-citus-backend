@@ -1,4 +1,4 @@
-
+//태그호출
 // package com.yth.realtime.service;
 
 // import java.util.ArrayList;
@@ -266,7 +266,7 @@
 
 
 
-
+//오브젝트호출
 package com.yth.realtime.service;
 
 import java.util.ArrayList;
