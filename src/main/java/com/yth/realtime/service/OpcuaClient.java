@@ -264,8 +264,6 @@
 //     }
 // }
 
-
-
 //오브젝트호출
 package com.yth.realtime.service;
 
@@ -300,7 +298,11 @@ public class OpcuaClient {
     private final Map<String, Map<String, NodeId>> groupedNodes = new HashMap<>();
     private final AtomicLong clientHandleCounter = new AtomicLong(1);
     // OPC UA 서버 주소 및 노드 ID 설정
-    private static final String SERVER_URL = "opc.tcp://192.168.10.12:4840";
+    // private static final String SERVER_URL = "opc.tcp://192.168.0.200:4840";
+    private static final String SERVER_URL = "opc.tcp://192.168.0.110:4840";
+
+    // private static final String SERVER_URL = "opc.tcp://192.168.0.20:4840";
+    // private static final String SERVER_URL = "opc.tcp://192.168.10.12:4840";
     // private static final String SERVER_URL = "opc.tcp://192.168.0.30:4840";
     // private static final String SERVER_URL = "opc.tcp://CIT-JIN:4840";
     // private static final String SERVER_URL = "opc.tcp://192.168.10.35:4840";
@@ -310,9 +312,11 @@ public class OpcuaClient {
             // "OPC_UA", "ns=4;s=|var|CODESYS Control Win V3 x64.Application.PLC_PRG",
             // "PLC_PRG", "ns=4;s=|var|CODESYS Control Win V3 x64.FRC1.PLC_PRG",
             // "GVL", "ns=4;s=|var|CODESYS Control Win V3 x64.FRC1.GVL",
-        //    "HIS", "ns=4;s=|var|CODESYS Control Win V3 x64.Application.His10ms"
-           //,
-            "HISto", "ns=4;s=|var|CODESYS Control Win V3 x64.FRC1.Historian.fHistorian"
+            // "HIS", "ns=4;s=|var|CODESYS Control Win V3 x64.Application.His10ms"
+            // ,
+            "HIS", "ns=4;s=|var|CODESYS Control Win V3 x64.FRC1.Historian.fHistorian"
+            // ,
+            // "HIS", "ns=4;s=|var|CODESYS Control Win V3 x64.FRC1.Historian_10ms.frc_historian"
             );
 
     /**
@@ -366,182 +370,185 @@ public class OpcuaClient {
             }
         }
     }
-//구독방식추가
+    // 구독방식추가
     // public void startSubscription(ValueUpdateHandler handler) {
-    //     if (!connected) {
-    //         log.warn("OPC UA 서버에 연결되어 있지 않으므로 구독을 시작할 수 없습니다.");
-    //         return;
-    //     }
-    
-    //     try {
-    //         UaSubscription subscription = client.getSubscriptionManager()
-    //                 .createSubscription(1000.0).get(); // 1초 샘플링 주기
-    
-    //         for (Map.Entry<String, Map<String, NodeId>> groupEntry : groupedNodes.entrySet()) {
-    //             String groupName = groupEntry.getKey();
-    //             Map<String, NodeId> nodeMap = groupEntry.getValue();
-    
-    //             for (Map.Entry<String, NodeId> nodeEntry : nodeMap.entrySet()) {
-    //                 String varName = nodeEntry.getKey();
-    //                 NodeId nodeId = nodeEntry.getValue();
-    
-    //                 ReadValueId readValueId = new ReadValueId(
-    //                         nodeId, AttributeId.Value.uid(), null, QualifiedName.NULL_VALUE);
-    
-    //                 // MonitoringParameters parameters = new MonitoringParameters(
-    //                 //         Unsigned.uint(1), // client handle
-    //                 //         1000.0, // 샘플링 주기(ms)
-    //                 //         null,
-    //                 //         Unsigned.uint(10),
-    //                 //         true);
-    
-    //                 long clientHandle = clientHandleCounter.getAndIncrement();
-
-    //                 MonitoringParameters parameters = new MonitoringParameters(
-    //                         Unsigned.uint(clientHandle),
-    //                         1000.0,
-    //                         null, // Deadband 없음 → 작은 변화도 무시하지 않음
-    //                         Unsigned.uint(10),
-    //                         true);
-
-    //                 MonitoredItemCreateRequest request = new MonitoredItemCreateRequest(
-    //                         readValueId, MonitoringMode.Reporting, parameters);
-    
-    //                 UaSubscription.ItemCreationCallback onItemCreated = (item, id) -> {
-    //                     item.setValueConsumer((itemVal, val) -> {
-    //                         Object value = val.getValue().getValue();
-    //                         handler.handleValueUpdate(groupName, varName, value);
-    //                     });
-    //                 };
-    
-    //                 subscription.createMonitoredItems(
-    //                         TimestampsToReturn.Both,
-    //                         List.of(request),
-    //                         onItemCreated
-    //                 ).get();
-    //             }
-    //         }
-    
-    //         log.info("Subscription 구독 방식 초기화 완료");
-    
-    //     } catch (Exception e) {
-    //         log.error("Subscription 등록 중 오류 발생: {}", e.getMessage(), e);
-    //     }
+    // if (!connected) {
+    // log.warn("OPC UA 서버에 연결되어 있지 않으므로 구독을 시작할 수 없습니다.");
+    // return;
     // }
-    
+
+    // try {
+    // UaSubscription subscription = client.getSubscriptionManager()
+    // .createSubscription(1000.0).get(); // 1초 샘플링 주기
+
+    // for (Map.Entry<String, Map<String, NodeId>> groupEntry :
+    // groupedNodes.entrySet()) {
+    // String groupName = groupEntry.getKey();
+    // Map<String, NodeId> nodeMap = groupEntry.getValue();
+
+    // for (Map.Entry<String, NodeId> nodeEntry : nodeMap.entrySet()) {
+    // String varName = nodeEntry.getKey();
+    // NodeId nodeId = nodeEntry.getValue();
+
+    // ReadValueId readValueId = new ReadValueId(
+    // nodeId, AttributeId.Value.uid(), null, QualifiedName.NULL_VALUE);
+
+    // // MonitoringParameters parameters = new MonitoringParameters(
+    // // Unsigned.uint(1), // client handle
+    // // 1000.0, // 샘플링 주기(ms)
+    // // null,
+    // // Unsigned.uint(10),
+    // // true);
+
+    // long clientHandle = clientHandleCounter.getAndIncrement();
+
+    // MonitoringParameters parameters = new MonitoringParameters(
+    // Unsigned.uint(clientHandle),
+    // 1000.0,
+    // null, // Deadband 없음 → 작은 변화도 무시하지 않음
+    // Unsigned.uint(10),
+    // true);
+
+    // MonitoredItemCreateRequest request = new MonitoredItemCreateRequest(
+    // readValueId, MonitoringMode.Reporting, parameters);
+
+    // UaSubscription.ItemCreationCallback onItemCreated = (item, id) -> {
+    // item.setValueConsumer((itemVal, val) -> {
+    // Object value = val.getValue().getValue();
+    // handler.handleValueUpdate(groupName, varName, value);
+    // });
+    // };
+
+    // subscription.createMonitoredItems(
+    // TimestampsToReturn.Both,
+    // List.of(request),
+    // onItemCreated
+    // ).get();
+    // }
+    // }
+
+    // log.info("Subscription 구독 방식 초기화 완료");
+
+    // } catch (Exception e) {
+    // log.error("Subscription 등록 중 오류 발생: {}", e.getMessage(), e);
+    // }
+    // }
+
     private void initializeNodes() throws UaException {
         log.info("OPC UA 변수 노드 초기화 시작");
-    
+
         for (Map.Entry<String, String> entry : OBJECT_NODES.entrySet()) {
             String groupName = entry.getKey();
             String nodeIdStr = entry.getValue();
-    
+
             // 각 그룹별 노드 맵 생성
             Map<String, NodeId> nodeMap = new HashMap<>();
             groupedNodes.put(groupName, nodeMap);
-    
+
             try {
                 NodeId objectNodeId = NodeId.parse(nodeIdStr);
-    
+
                 // browseBranchNode(...) 호출 시 nodeMap을 넘겨줌
                 List<NodeId> childNodeIds = browseBranchNode(objectNodeId, nodeMap);
-    
+
                 log.info("{} 그룹에서 {} 개의 노드를 찾았습니다", groupName, childNodeIds.size());
-    
+
             } catch (Exception e) {
                 log.error("{} 객체의 변수 노드 초기화 실패: {}", groupName, e.getMessage(), e);
             }
         }
-    
+
         log.info("모든 변수 노드 초기화 완료");
     }
-    
+
     /**
      * 특정 노드의 자식 노드들을 찾아, (browseName -> NodeId) 매핑하고 리스트로 반환
      */
     private List<NodeId> browseBranchNode(NodeId nodeId, Map<String, NodeId> nodeMap) throws UaException {
         List<NodeId> childNodeIds = new ArrayList<>();
-    
+
         client.getAddressSpace().browse(nodeId).forEach(ref -> {
             NodeId childId = ref.getNodeId().toNodeId(client.getNamespaceTable()).orElse(null);
             if (childId != null) {
                 String browseName = ref.getBrowseName().getName();
-    
+
                 nodeMap.put(browseName, childId);
                 childNodeIds.add(childId);
-    
+
                 log.debug("노드 추가: {} - {}", browseName, childId);
             }
         });
-    
+
         return childNodeIds;
     }
+
     /**
      * 특정 그룹의 모든 변수값 읽기
      */
     // public Map<String, Object> readGroupValues(String groupName) {
-    //     Map<String, Object> result = new HashMap<>();
+    // Map<String, Object> result = new HashMap<>();
 
-    //     if (!connected) {
-    //         log.warn("OPC UA 서버에 연결되어 있지 않습니다");
-    //         result.put("error", "서버에 연결되어 있지 않습니다");
-    //         return result;
-    //     }
+    // if (!connected) {
+    // log.warn("OPC UA 서버에 연결되어 있지 않습니다");
+    // result.put("error", "서버에 연결되어 있지 않습니다");
+    // return result;
+    // }
 
-    //     Map<String, NodeId> nodes = groupedNodes.get(groupName);
-    //     if (nodes == null) {
-    //         log.warn("존재하지 않는 그룹: {}", groupName);
-    //         result.put("error", "존재하지 않는 그룹");
-    //         return result;
-    //     }
+    // Map<String, NodeId> nodes = groupedNodes.get(groupName);
+    // if (nodes == null) {
+    // log.warn("존재하지 않는 그룹: {}", groupName);
+    // result.put("error", "존재하지 않는 그룹");
+    // return result;
+    // }
 
-    //     for (Map.Entry<String, NodeId> entry : nodes.entrySet()) {
-    //         String varName = entry.getKey();
-    //         NodeId nodeId = entry.getValue();
+    // for (Map.Entry<String, NodeId> entry : nodes.entrySet()) {
+    // String varName = entry.getKey();
+    // NodeId nodeId = entry.getValue();
 
-    //         try {
-    //             CompletableFuture<DataValue> future = client.readValue(0, TimestampsToReturn.Both, nodeId);
-    //             DataValue value = future.get();
+    // try {
+    // CompletableFuture<DataValue> future = client.readValue(0,
+    // TimestampsToReturn.Both, nodeId);
+    // DataValue value = future.get();
 
-    //             // 값이 null이 아닌 경우에만 결과에 추가
-    //             if (value.getValue().getValue() != null) {
-    //                 result.put(varName, value.getValue().getValue());
-    //             } else {
-    //                 result.put(varName, null);
-    //             }
-    //         } catch (Exception e) {
-    //             log.error("변수 {} 값 읽기 실패: {}", varName, e.getMessage());
-    //             result.put(varName, "읽기 오류");
-    //         }
-    //     }
+    // // 값이 null이 아닌 경우에만 결과에 추가
+    // if (value.getValue().getValue() != null) {
+    // result.put(varName, value.getValue().getValue());
+    // } else {
+    // result.put(varName, null);
+    // }
+    // } catch (Exception e) {
+    // log.error("변수 {} 값 읽기 실패: {}", varName, e.getMessage());
+    // result.put(varName, "읽기 오류");
+    // }
+    // }
 
-    //     return result;
+    // return result;
     // }
     public Map<String, Object> readGroupValues(String groupName) {
         Map<String, Object> result = new HashMap<>();
-    
+
         if (!connected) {
             log.warn("OPC UA 서버에 연결되어 있지 않습니다");
             result.put("error", "서버에 연결되어 있지 않습니다");
             return result;
         }
-    
+
         Map<String, NodeId> nodes = groupedNodes.get(groupName);
         if (nodes == null) {
             log.warn("존재하지 않는 그룹: {}", groupName);
             result.put("error", "존재하지 않는 그룹");
             return result;
         }
-    
+
         try {
             List<NodeId> nodeIdList = new ArrayList<>(nodes.values());
             List<DataValue> values = client.readValues(0, TimestampsToReturn.Both, nodeIdList).get();
-    
+
             int index = 0;
             for (Map.Entry<String, NodeId> entry : nodes.entrySet()) {
                 String varName = entry.getKey();
                 DataValue value = values.get(index++);
-    
+
                 if (value != null && value.getValue() != null) {
                     result.put(varName, value.getValue().getValue());
                 } else {
@@ -552,25 +559,24 @@ public class OpcuaClient {
             log.error("그룹 {} 값 일괄 읽기 실패: {}", groupName, e.getMessage(), e);
             result.put("error", "일괄 읽기 실패");
         }
-    
+
         return result;
     }
-    
 
     /**
      * 모든 그룹의 변수값 읽기
      */
     // public Map<String, Map<String, Object>> readAllValues() {
-    //     Map<String, Map<String, Object>> result = new HashMap<>();
+    // Map<String, Map<String, Object>> result = new HashMap<>();
 
-    //     for (String groupName : groupedNodes.keySet()) {
-    //         result.put(groupName, readGroupValues(groupName));
-    //     }
-
-    //     return result;
+    // for (String groupName : groupedNodes.keySet()) {
+    // result.put(groupName, readGroupValues(groupName));
     // }
 
-      /**
+    // return result;
+    // }
+
+    /**
      * 모든 그룹의 변수값 읽기 (그룹 단위 병렬 처리)
      */
     public Map<String, Map<String, Object>> readAllValues() {
@@ -599,7 +605,7 @@ public class OpcuaClient {
                     Map<String, Object> values = readGroupValues(group);
                     // Map.entry를 사용하여 그룹 이름과 결과 값을 쌍으로 반환
                     return Map.entry(group, values);
-                }/*, collectorPool */)) // 특정 ExecutorService 사용 시 주석 해제 및 전달 필요
+                }/* , collectorPool */)) // 특정 ExecutorService 사용 시 주석 해제 및 전달 필요
                 .collect(Collectors.toList()); // Java 16+ 에서는 .toList() 사용 가능
 
         // 모든 비동기 작업이 완료될 때까지 기다리고 결과 취합
@@ -640,7 +646,6 @@ public class OpcuaClient {
 
         return result;
     }
-
 
     /**
      * 연결 상태 확인

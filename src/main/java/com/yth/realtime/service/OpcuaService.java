@@ -42,13 +42,13 @@ public class OpcuaService {
     private final OpcuaInfluxDBService influxDBService;
     private final ApplicationEventPublisher eventPublisher;
 
-    ExecutorService collectorPool = Executors.newFixedThreadPool(4); // 수집 병렬 스레드 4개
+    ExecutorService collectorPool = Executors.newFixedThreadPool(1); // 수집 병렬 스레드 4개
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
     private final ExecutorService saveExecutor = Executors.newFixedThreadPool(8); // 저장 스레드
     ExecutorService storageExecutor = Executors.newFixedThreadPool(16);
 
     ExecutorService sendExecutor = Executors.newFixedThreadPool(1);
-    private final BlockingQueue<TimestampedData> saveQueue = new LinkedBlockingQueue<>(1000);
+    private final BlockingQueue<TimestampedData> saveQueue = new LinkedBlockingQueue<>(4096 * 2);
 
     private ScheduledFuture<?> dataCollectionTask;
     private boolean autoReconnect = true;
@@ -140,7 +140,8 @@ public class OpcuaService {
                 long cycleEndTime = System.nanoTime();
                 long cycleDurationMs = TimeUnit.NANOSECONDS.toMillis(cycleEndTime - cycleStartTime);
                 if (cycleDurationMs > 5) { // 5ms 이상 걸리면 경고
-                    log.warn("데이터 수집 주기 작업 시간 초과: {}ms (설정: 5ms)", cycleDurationMs);
+                    // 로깅로깅
+                    // log.warn("데이터 수집 주기 작업 시간 초과: {}ms (설정: 5ms)", cycleDurationMs);
                 }
                 // log.debug("데이터 수집 주기 완료. 총 {} ms", cycleDurationMs);
             }
@@ -281,6 +282,7 @@ public class OpcuaService {
                         influxDBService.getOrg(),
                         point);
                 // 저장 확인
+                // 로깅로깅
                 log.debug("✅ 비동기 InfluxDB 저장 요청 완료: {}", timestamp);
             } else {
                 log.warn("[SAVE_DB] No valid fields found to write for timestamp {}. Skipping writePoint.", timestamp);
@@ -447,11 +449,7 @@ public class OpcuaService {
 
 }
 
-
-
-
 // 슬립
-
 // package com.yth.realtime.service;
 
 // import java.time.LocalDateTime;
@@ -486,308 +484,326 @@ public class OpcuaService {
 
 // @Service
 // public class OpcuaService {
-//     private static final Logger log = LoggerFactory.getLogger(OpcuaService.class);
+// private static final Logger log =
+// LoggerFactory.getLogger(OpcuaService.class);
 
-//     private final OpcuaClient opcuaClient;
-//     private final OpcuaWebSocketHandler webSocketHandler;
-//     private final OpcuaInfluxDBService influxDBService;
-//     private final ApplicationEventPublisher eventPublisher;
+// private final OpcuaClient opcuaClient;
+// private final OpcuaWebSocketHandler webSocketHandler;
+// private final OpcuaInfluxDBService influxDBService;
+// private final ApplicationEventPublisher eventPublisher;
 
-//     ExecutorService collectorPool = Executors.newFixedThreadPool(4); // 수집 병렬 스레드 4개
-//     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-//     private final ExecutorService saveExecutor = Executors.newFixedThreadPool(8); // 저장 스레드
-//     ExecutorService storageExecutor = Executors.newFixedThreadPool(16);
+// ExecutorService collectorPool = Executors.newFixedThreadPool(4);
+// // 수집 병렬 스레드4 개
+// private final ScheduledExecutorService scheduler =
+// Executors.newScheduledThreadPool(1);
+// private final ExecutorService saveExecutor = Executors.newFixedThreadPool(8);
+// // 저장 스레드
+// ExecutorService storageExecutor = Executors.newFixedThreadPool(16);
 
-//     ExecutorService sendExecutor = Executors.newFixedThreadPool(1);
-//     private final BlockingQueue<TimestampedData> saveQueue = new LinkedBlockingQueue<>(1000);
+// ExecutorService sendExecutor = Executors.newFixedThreadPool(1);
+// private final BlockingQueue<TimestampedData> saveQueue = new
+// LinkedBlockingQueue<>(1000);
 
-//     private ScheduledFuture<?> dataCollectionTask;
-//     private boolean autoReconnect = true;
+// private ScheduledFuture<?> dataCollectionTask;
+// private boolean autoReconnect = true;
 
-//     @Autowired
-//     public OpcuaService(OpcuaClient opcuaClient, OpcuaWebSocketHandler opcuaWebSocketHandler,
-//             OpcuaInfluxDBService opcuaInfluxDBService, ApplicationEventPublisher eventPublisher) {
-//         this.opcuaClient = opcuaClient;
-//         this.webSocketHandler = opcuaWebSocketHandler;
-//         this.influxDBService = opcuaInfluxDBService;
-//         this.eventPublisher = eventPublisher;
-//         // 비동기 Write API 생성
-//     }
+// @Autowired
+// public OpcuaService(OpcuaClient opcuaClient, OpcuaWebSocketHandler
+// opcuaWebSocketHandler,
+// OpcuaInfluxDBService opcuaInfluxDBService, ApplicationEventPublisher
+// eventPublisher) {
+// this.opcuaClient = opcuaClient;
+// this.webSocketHandler = opcuaWebSocketHandler;
+// this.influxDBService = opcuaInfluxDBService;
+// this.eventPublisher = eventPublisher;
+// // 비동기 Write API 생성
+// }
 
-//     /**
-//      * OPC UA 서버 연결
-//      */
-//     public boolean connect() {
-//         return opcuaClient.connect();
-//     }
+// /**
+// * OPC UA 서버 연결
+// */
+// public boolean connect() {
+// return opcuaClient.connect();
+// }
 
-//     /**
-//      * OPC UA 서버 연결 해제
-//      */
-//     public void disconnect() {
-//         opcuaClient.disconnect();
-//     }
+// /**
+// * OPC UA 서버 연결 해제
+// */
+// public void disconnect() {
+// opcuaClient.disconnect();
+// }
 
-//     public void startDataCollection() {
-//         stopDataCollection(); // 중복 방지
+// public void startDataCollection() {
+// stopDataCollection(); // 중복 방지
 
-//         // ✅ 1. 수집 쓰레드 (5ms 간격 → saveQueue로 전달 - put 사용)
-//         for (int i = 0; i < 4; i++) {
-//             collectorPool.submit(() -> {
-//                 while (!Thread.currentThread().isInterrupted()) {
-//                     long cycleStartTimeNanos = System.nanoTime(); // <<<--- 사이클 시작 시간 (나노초)
-//                     long collectionCycleStartTime = System.currentTimeMillis();
-//                     try {
-//                         if (!opcuaClient.isConnected()) {
-//                             log.warn("OPC UA 서버 연결 끊김 → 재연결 시도");
-//                             if (autoReconnect)
-//                                 opcuaClient.connect();
-//                             Thread.sleep(100); // 연결 재시도 간격
-//                             continue;
-//                         }
+// // ✅ 1. 수집 쓰레드 (5ms 간격 → saveQueue로 전달 - put 사용)
+// for (int i = 0; i < 4; i++) {
+// collectorPool.submit(() -> {
 
-//                         long readStartTime = System.currentTimeMillis();
-//                         Map<String, Map<String, Object>> data = opcuaClient.readAllValues();
-//                         long readEndTime = System.currentTimeMillis();
+// while (!Thread.currentThread().isInterrupted()) {
+// long cycleStartTimeNanos = System.nanoTime(); // <<<--- 사이클 시작 시간 (나노초)
+// long collectionCycleStartTime = System.currentTimeMillis();
+// try {
+// if (!opcuaClient.isConnected()) {
+// log.warn("OPC UA 서버 연결 끊김 → 재연결 시도");
+// if (autoReconnect)
+// opcuaClient.connect();
+// Thread.sleep(100); // 연결 재시도 간격
+// continue;
+// }
 
-//                         // log.debug("스레드 {}: readAllValues() {} ms",
-//                         // Thread.currentThread().getName(), readEndTime - readStartTime);
+// long readStartTime = System.currentTimeMillis();
+// Map<String, Map<String, Object>> data = opcuaClient.readAllValues();
+// long readEndTime = System.currentTimeMillis();
 
-//                         LocalDateTime collectionTimestamp = LocalDateTime.now();
-//                         saveQueue.put(new TimestampedData(data, collectionTimestamp));
+// // log.debug("스레드 {}: readAllValues() {} ms",
+// // Thread.currentThread().getName(), readEndTime - readStartTime);
 
-//                         // 수집 주기 조절 (과부하 방지)
-//                         Thread.sleep(5);
+// LocalDateTime collectionTimestamp = LocalDateTime.now();
+// saveQueue.put(new TimestampedData(data, collectionTimestamp));
 
-//                         long collectionCycleEndTime = System.currentTimeMillis();
-//                         // log.debug("스레드 {}: 수집 사이클 완료. 총 {} ms",
-//                         // Thread.currentThread().getName(), collectionCycleEndTime -
-//                         // collectionCycleStartTime);
+// // 수집 주기 조절 (과부하 방지)
+// Thread.sleep(5);
 
-//                         // 추가 로깅
-//                         long cycleEndTimeNanos = System.nanoTime(); // <<<--- 사이클 종료 시간 (나노초)
-//                         double cycleDurationMs = (cycleEndTimeNanos - cycleStartTimeNanos) / 1_000_000.0; // 밀리초 변환
+// long collectionCycleEndTime = System.currentTimeMillis();
+// // log.debug("스레드 {}: 수집 사이클 완료. 총 {} ms",
+// // Thread.currentThread().getName(), collectionCycleEndTime -
+// // collectionCycleStartTime);
 
-//                         // 수집 주기 시간 로그 출력 (DEBUG 레벨 추천)
-//                         log.debug("수집 주기 완료 (스레드 {}): {} ms", Thread.currentThread().getName(), cycleDurationMs);
+// // 추가 로깅
+// // long cycleEndTimeNanos = System.nanoTime(); // <<<--- 사이클 종료 시간 (나노초)
+// // double cycleDurationMs = (cycleEndTimeNanos - cycleStartTimeNanos) /
+// // 1_000_000.0; // 밀리초 변환
 
-//                     } catch (InterruptedException e) {
-//                         Thread.currentThread().interrupt();
-//                         break;
-//                     } catch (Exception e) {
-//                         log.error("스레드 {} 수집 오류: {}", Thread.currentThread().getName(), e.getMessage(), e);
-//                     }
-//                 }
-//             });
-//         }
+// // 수집 주기 시간 로그 출력 (DEBUG 레벨 추천)
+// // log.debug("수집 주기 완료 (스레드 {}): {} ms",
+// Thread.currentThread().getName(),cycleDurationMs);
 
-//         log.info("✅ 수집 스레드 4개 시작됨 (병렬 수집)");
+// } catch (InterruptedException e) {
+// Thread.currentThread().interrupt();
+// break;
+// } catch (Exception e) {
+// log.error("스레드 {} 수집 오류: {}", Thread.currentThread().getName(),
+// e.getMessage(), e);
+// }
+// }
+// });
+// }
 
-//         for (int i = 0; i < 8; i++) {
-//             saveExecutor.submit(() -> {
-//                 while (!Thread.currentThread().isInterrupted()) {
-//                     try {
-//                         List<TimestampedData> batch = new ArrayList<>();
-//                         saveQueue.drainTo(batch, 100);
+// log.info("✅ 수집 스레드 4개 시작됨 (병렬 수집)");
 
-//                         if (batch.isEmpty()) {
-//                             Thread.sleep(10);
-//                             continue;
-//                         }
+// for (int i = 0; i < 8; i++) {
+// saveExecutor.submit(() -> {
+// while (!Thread.currentThread().isInterrupted()) {
+// try {
+// List<TimestampedData> batch = new ArrayList<>();
+// saveQueue.drainTo(batch, 100);
 
-//                         for (TimestampedData data : batch) {
-//                             storageExecutor.submit(() -> {
-//                                 try {
-//                                     saveToInfluxDB(data.getData(), data.getTimestamp());
+// if (batch.isEmpty()) {
+// Thread.sleep(10);
+// continue;
+// }
 
-//                                     // ✅ 중복된 timestamp가 큐에 들어가지 않도록 처리
-//                                     // if (seenTimestamps.add(data.getTimestamp())) {
-//                                     // sendQueue.put(data.getTimestamp()); // 새 타임스탬프만 큐에 넣음
-//                                     // }
+// for (TimestampedData data : batch) {
+// storageExecutor.submit(() -> {
+// try {
+// saveToInfluxDB(data.getData(), data.getTimestamp());
 
-//                                 } catch (Exception e) {
-//                                     // saveToInfluxDB 내부 오류 또는 submit 자체 오류 처리
-//                                     log.error("저장 작업 제출 또는 실행 중 오류 (Timestamp: {}): {}",
-//                                             data != null ? data.getTimestamp() : "unknown", e.getMessage(), e);
-//                                 }
-//                             });
-//                         }
+// // ✅ 중복된 timestamp가 큐에 들어가지 않도록 처리
+// // if (seenTimestamps.add(data.getTimestamp())) {
+// // sendQueue.put(data.getTimestamp()); // 새 타임스탬프만 큐에 넣음
+// // }
 
-//                     } catch (InterruptedException e) {
-//                         Thread.currentThread().interrupt();
-//                         log.warn("saveExecutor 스레드 인터럽트 발생. 종료 중...", e);
-//                         break;
-//                     } catch (Exception e) {
-//                         // drainTo, submit 등에서 발생 가능한 예외 처리
-//                         log.error("saveExecutor 배치 처리 루프 오류: {}", e.getMessage(), e);
-//                     }
-//                 }
-//                 log.info("saveExecutor 스레드 종료됨.");
-//             });
-//         }
+// } catch (Exception e) {
+// // saveToInfluxDB 내부 오류 또는 submit 자체 오류 처리
+// log.error("저장 작업 제출 또는 실행 중 오류 (Timestamp: {}): {}",
+// data != null ? data.getTimestamp() : "unknown", e.getMessage(), e);
+// }
+// });
+// }
 
-//     }
+// } catch (InterruptedException e) {
+// Thread.currentThread().interrupt();
+// log.warn("saveExecutor 스레드 인터럽트 발생. 종료 중...", e);
+// break;
+// } catch (Exception e) {
+// // drainTo, submit 등에서 발생 가능한 예외 처리
+// log.error("saveExecutor 배치 처리 루프 오류: {}", e.getMessage(), e);
+// }
+// }
+// log.info("saveExecutor 스레드 종료됨.");
+// });
+// }
 
-//     public void stopDataCollection() {
-//         if (dataCollectionTask != null && !dataCollectionTask.isDone()) {
-//             dataCollectionTask.cancel(false);
-//             log.info("데이터 수집 중단됨");
-//         }
-//     }
+// }
 
-//     @PreDestroy
-//     public void cleanup() {
-//         stopDataCollection();
-//         if (collectorPool != null)
-//             collectorPool.shutdownNow(); // 수집 풀 종료
-//         if (saveExecutor != null)
-//             saveExecutor.shutdownNow();
-//         if (storageExecutor != null)
-//             storageExecutor.shutdownNow();
+// public void stopDataCollection() {
+// if (dataCollectionTask != null && !dataCollectionTask.isDone()) {
+// dataCollectionTask.cancel(false);
+// log.info("데이터 수집 중단됨");
+// }
+// }
 
-//         opcuaClient.disconnect();
-//         webSocketHandler.clearAllSessions();
+// @PreDestroy
+// public void cleanup() {
+// stopDataCollection();
+// if (collectorPool != null)
+// collectorPool.shutdownNow(); // 수집 풀 종료
+// if (saveExecutor != null)
+// saveExecutor.shutdownNow();
+// if (storageExecutor != null)
+// storageExecutor.shutdownNow();
 
-//         if (influxDBService.getAsyncWriteApi() != null) { // Null 체크 추가
-//             influxDBService.getAsyncWriteApi().flush(); // 남은 데이터 저장
-//             influxDBService.getAsyncWriteApi().close();
-//         }
-//     }
+// opcuaClient.disconnect();
+// webSocketHandler.clearAllSessions();
 
-//     private void saveToInfluxDB(Map<String, Map<String, Object>> allData, LocalDateTime timestamp) {
-//         if (allData == null || allData.isEmpty())
-//             return;
+// if (influxDBService.getAsyncWriteApi() != null) { // Null 체크 추가
+// influxDBService.getAsyncWriteApi().flush(); // 남은 데이터 저장
+// influxDBService.getAsyncWriteApi().close();
+// }
+// }
 
-//         try {
-//             Map<String, Object> flattenedData = flattenData(allData);
-//             if (flattenedData.isEmpty())
-//                 return;
+// private void saveToInfluxDB(Map<String, Map<String, Object>> allData,
+// LocalDateTime timestamp) {
+// if (allData == null || allData.isEmpty())
+// return;
 
-//             Point point = Point.measurement("opcua_data")
-//                     .addTag("system", "PCS_System")
-//                     .time(timestamp.atZone(ZoneId.systemDefault()).toInstant(), WritePrecision.NS);
+// try {
+// Map<String, Object> flattenedData = flattenData(allData);
+// if (flattenedData.isEmpty())
+// return;
 
-//             for (Map.Entry<String, Object> entry : flattenedData.entrySet()) {
-//                 String field = entry.getKey().replaceAll("[^a-zA-Z0-9_]", "_");
-//                 Object value = entry.getValue();
+// Point point = Point.measurement("opcua_data")
+// .addTag("system", "PCS_System")
+// .time(timestamp.atZone(ZoneId.systemDefault()).toInstant(),
+// WritePrecision.NS);
 
-//                 if (value instanceof Number) {
-//                     point.addField(field, ((Number) value).doubleValue());
-//                 } else if (value instanceof Boolean) {
-//                     point.addField(field, (Boolean) value);
-//                 }
-//             }
+// for (Map.Entry<String, Object> entry : flattenedData.entrySet()) {
+// String field = entry.getKey().replaceAll("[^a-zA-Z0-9_]", "_");
+// Object value = entry.getValue();
 
-//             // ✅ 비동기 저장으로 변경
-//             influxDBService.getAsyncWriteApi().writePoint(
-//                     influxDBService.getBucket(),
-//                     influxDBService.getOrg(),
-//                     point);
+// if (value instanceof Number) {
+// point.addField(field, ((Number) value).doubleValue());
+// } else if (value instanceof Boolean) {
+// point.addField(field, (Boolean) value);
+// }
+// }
 
-//             // 저장 확인
-//             log.debug("✅ 비동기 InfluxDB 저장 요청 완료: {}", timestamp);
+// // ✅ 비동기 저장으로 변경
+// influxDBService.getAsyncWriteApi().writePoint(
+// influxDBService.getBucket(),
+// influxDBService.getOrg(),
+// point);
 
-//         } catch (Exception e) {
-//             log.error("❌ InfluxDB 비동기 저장 중 오류: {}", e.getMessage(), e);
-//         }
-//     }
+// // 저장 확인
+// // 로깅로깅
+// log.debug("✅ 비동기 InfluxDB 저장 요청 완료: {}", timestamp);
 
-//     /**
-//      * 중첩된 맵 구조 평탄화
-//      */
-//     private Map<String, Object> flattenData(Map<String, Map<String, Object>> nestedData) {
-//         Map<String, Object> flattenedData = new HashMap<>();
+// } catch (Exception e) {
+// log.error("❌ InfluxDB 비동기 저장 중 오류: {}", e.getMessage(), e);
+// }
+// }
 
-//         for (Map.Entry<String, Map<String, Object>> groupEntry : nestedData.entrySet()) {
-//             String groupName = groupEntry.getKey();
-//             Map<String, Object> groupData = groupEntry.getValue();
+// /**
+// * 중첩된 맵 구조 평탄화
+// */
+// private Map<String, Object> flattenData(Map<String, Map<String, Object>>
+// nestedData) {
+// Map<String, Object> flattenedData = new HashMap<>();
 
-//             for (Map.Entry<String, Object> fieldEntry : groupData.entrySet()) {
-//                 String fieldName = fieldEntry.getKey();
-//                 Object fieldValue = fieldEntry.getValue();
+// for (Map.Entry<String, Map<String, Object>> groupEntry :
+// nestedData.entrySet()) {
+// String groupName = groupEntry.getKey();
+// Map<String, Object> groupData = groupEntry.getValue();
 
-//                 // 그룹_필드명 형식으로 키 생성 (예: PCS1_SOC)
-//                 String flatKey = fieldName;
-//                 flattenedData.put(flatKey, fieldValue);
-//             }
-//         }
+// for (Map.Entry<String, Object> fieldEntry : groupData.entrySet()) {
+// String fieldName = fieldEntry.getKey();
+// Object fieldValue = fieldEntry.getValue();
 
-//         return flattenedData;
-//     }
+// // 그룹_필드명 형식으로 키 생성 (예: PCS1_SOC)
+// String flatKey = fieldName;
+// flattenedData.put(flatKey, fieldValue);
+// }
+// }
 
-//     /**
-//      * 특정 그룹의 데이터 조회
-//      */
-//     public Map<String, Object> getGroupData(String groupName) {
-//         return opcuaClient.readGroupValues(groupName);
-//     }
+// return flattenedData;
+// }
 
-//     /**
-//      * 모든 그룹의 데이터 조회
-//      */
-//     public Map<String, Map<String, Object>> getAllData() {
-//         return opcuaClient.readAllValues();
-//     }
+// /**
+// * 특정 그룹의 데이터 조회
+// */
+// public Map<String, Object> getGroupData(String groupName) {
+// return opcuaClient.readGroupValues(groupName);
+// }
 
-//     /**
-//      * 연결 상태 확인
-//      */
-//     public boolean isConnected() {
-//         return opcuaClient.isConnected();
-//     }
+// /**
+// * 모든 그룹의 데이터 조회
+// */
+// public Map<String, Map<String, Object>> getAllData() {
+// return opcuaClient.readAllValues();
+// }
 
-//     /**
-//      * 자동 재연결 설정
-//      */
-//     public void setAutoReconnect(boolean autoReconnect) {
-//         this.autoReconnect = autoReconnect;
-//     }
+// /**
+// * 연결 상태 확인
+// */
+// public boolean isConnected() {
+// return opcuaClient.isConnected();
+// }
 
-//     /**
-//      * 자동 재연결 상태 확인
-//      */
-//     public boolean isAutoReconnect() {
-//         return autoReconnect;
-//     }
+// /**
+// * 자동 재연결 설정
+// */
+// public void setAutoReconnect(boolean autoReconnect) {
+// this.autoReconnect = autoReconnect;
+// }
 
-//     @PostConstruct
-//     public void initializeAndStartCollection() {
-//         log.info("애플리케이션 시작됨. OPC UA 연결 및 데이터 수집 시작 시도...");
-//         if (connect()) { // OPC UA 서버 연결 시도
-//             log.info("OPC UA 서버 연결 성공.");
-//             startDataCollection(); // 데이터 수집 시작
-//         } else {
-//             log.error("OPC UA 서버 초기 연결 실패. 데이터 수집을 시작할 수 없습니다. (자동 재연결은 시도될 수 있음)");
-//             // 연결 실패 시 추가적인 처리 (예: 재시도 로직, 상태 알림 등) 필요 시 여기에 구현
-//         }
-//     }
+// /**
+// * 자동 재연결 상태 확인
+// */
+// public boolean isAutoReconnect() {
+// return autoReconnect;
+// }
 
-//     @EventListener
-//     public void onStartCollection(StartOpcuaCollectionEvent event) {
-//         // log.info("StartOpcuaCollectionEvent 수신 → connect + startDataCollection 실행");
-//         connect();
-//         startDataCollection();
-//         // startSubscriptionBasedCollection(); // ✅ 구독 방식 사용
-//     }
+// @PostConstruct
+// public void initializeAndStartCollection() {
+// log.info("애플리케이션 시작됨. OPC UA 연결 및 데이터 수집 시작 시도...");
+// if (connect()) { // OPC UA 서버 연결 시도
+// log.info("OPC UA 서버 연결 성공.");
+// startDataCollection(); // 데이터 수집 시작
+// } else {
+// log.error("OPC UA 서버 초기 연결 실패. 데이터 수집을 시작할 수 없습니다. (자동 재연결은 시도될 수 있음)");
+// // 연결 실패 시 추가적인 처리 (예: 재시도 로직, 상태 알림 등) 필요 시 여기에 구현
+// }
+// }
 
-//     // 예시: 래퍼 클래스
-//     class TimestampedData {
-//         final Map<String, Map<String, Object>> data;
-//         final LocalDateTime timestamp;
+// @EventListener
+// public void onStartCollection(StartOpcuaCollectionEvent event) {
+// // log.info("StartOpcuaCollectionEvent 수신 → connect +
+// startDataCollection실행");
+// connect();
+// startDataCollection();
+// // startSubscriptionBasedCollection(); // ✅ 구독 방식 사용
+// }
 
-//         // 생성자, getter
-//         TimestampedData(Map<String, Map<String, Object>> data, LocalDateTime timestamp) {
-//             this.data = data;
-//             this.timestamp = timestamp;
-//         }
+// // 예시: 래퍼 클래스
+// class TimestampedData {
+// final Map<String, Map<String, Object>> data;
+// final LocalDateTime timestamp;
 
-//         Map<String, Map<String, Object>> getData() {
-//             return data;
-//         }
+// // 생성자, getter
+// TimestampedData(Map<String, Map<String, Object>> data, LocalDateTime
+// timestamp) {
+// this.data = data;
+// this.timestamp = timestamp;
+// }
 
-//         LocalDateTime getTimestamp() {
-//             return timestamp;
-//         }
-//     }
+// Map<String, Map<String, Object>> getData() {
+// return data;
+// }
+
+// LocalDateTime getTimestamp() {
+// return timestamp;
+// }
+// }
 
 // }

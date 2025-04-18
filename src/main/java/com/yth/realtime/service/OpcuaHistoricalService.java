@@ -264,7 +264,7 @@ public class OpcuaHistoricalService {
 
             try {
                 // 전체 작업에 대한 타임아웃 설정 (예: 1분, 개별 30초 타임아웃과 별개)
-                allFutures.get(1, TimeUnit.MINUTES); // 1분 내 모든 작업 완료 대기
+                allFutures.get(5, TimeUnit.MINUTES); // 1분 내 모든 작업 완료 대기
                 log.info("모든 병렬 쿼리 작업 완료.");
             } catch (Exception e) {
                 log.error("병렬 쿼리 작업 대기 중 오류 발생 (타임아웃 또는 개별 작업 실패)", e);
