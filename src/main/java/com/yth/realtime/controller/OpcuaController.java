@@ -111,28 +111,28 @@ public class OpcuaController {
         return ResponseEntity.ok(response);
     }
 
-    @PostMapping("/historical")
-    public ResponseEntity<HistoricalDataResponse> getHistoricalData(@RequestBody HistoricalDataRequest request) {
-        log.warn("===== 과거 데이터 조회 요청 수신: {} =====", request);
+    // @PostMapping("/historical")
+    // public ResponseEntity<HistoricalDataResponse> getHistoricalData(@RequestBody HistoricalDataRequest request) {
+    //     log.warn("===== 과거 데이터 조회 요청 수신: {} =====", request);
 
-        try {
-            // 서비스 호출 직전 로그
-            log.warn("서비스 호출 직전: {}", request.getDeviceGroup());
-            HistoricalDataResponse response = opcuaHistoricalService.getHistoricalData(
-                    request.getStartTime(),
-                    request.getEndTime(),
-                    request.getDeviceGroup());
-            log.warn("서비스 호출 완료: 성공={}", response.isSuccess());
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("과거 데이터 조회 중 오류 발생: {}", e.getMessage(), e);
-            return ResponseEntity.badRequest().body(
-                    HistoricalDataResponse.builder()
-                            .success(false)
-                            .message("데이터 조회 중 오류가 발생했습니다: " + e.getMessage())
-                            .build());
-        }
-    }
+    //     try {
+    //         // 서비스 호출 직전 로그
+    //         log.warn("서비스 호출 직전: {}", request.getDeviceGroup());
+    //         HistoricalDataResponse response = opcuaHistoricalService.getHistoricalData(
+    //                 request.getStartTime(),
+    //                 request.getEndTime(),
+    //                 request.getDeviceGroup());
+    //         log.warn("서비스 호출 완료: 성공={}", response.isSuccess());
+    //         return ResponseEntity.ok(response);
+    //     } catch (Exception e) {
+    //         log.error("과거 데이터 조회 중 오류 발생: {}", e.getMessage(), e);
+    //         return ResponseEntity.badRequest().body(
+    //                 HistoricalDataResponse.builder()
+    //                         .success(false)
+    //                         .message("데이터 조회 중 오류가 발생했습니다: " + e.getMessage())
+    //                         .build());
+    //     }
+    // }
 
     // @PostMapping("/historical/export")
     // public ResponseEntity<?> exportHistoricalData(@RequestBody HistoricalDataRequest request) {
