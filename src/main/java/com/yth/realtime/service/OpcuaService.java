@@ -53,6 +53,10 @@ public class OpcuaService {
     private ScheduledFuture<?> dataCollectionTask;
     private boolean autoReconnect = true;
 
+    // 클래스 멤버 변수 추가
+    private long firstDisconnectTime = 0L;
+    private long lastReconnectAttempt = 0L;
+
     @Autowired
     public OpcuaService(OpcuaClient opcuaClient, OpcuaWebSocketHandler opcuaWebSocketHandler,
             OpcuaInfluxDBService opcuaInfluxDBService, ApplicationEventPublisher eventPublisher) {
@@ -84,18 +88,59 @@ public class OpcuaService {
 
         dataCollectionTask = scheduler.scheduleAtFixedRate(() -> {
             long cycleStartTime = System.nanoTime(); // 더 정밀한 시간 측정
+
             try {
                 // 1. 연결 확인
+                // if (!opcuaClient.isConnected()) {
+                // log.warn("OPC UA 서버 연결 끊김 → 재연결 시도");
+                // if (autoReconnect) {
+                // opcuaClient.connect(); // 연결 시도 (동기 방식이므로 완료될 때까지 대기)
+                // }
+                // // 연결 실패 시 다음 주기로 넘어감 (재연결 로직 보완 필요 시 여기에 추가)
+                // if (!opcuaClient.isConnected()) {
+                // log.warn("OPC UA 서버 재연결 실패. 다음 주기에 다시 시도합니다.");
+                // return; // 현재 주기 작업 중단
+                // }
+                // }
+
                 if (!opcuaClient.isConnected()) {
-                    log.warn("OPC UA 서버 연결 끊김 → 재연결 시도");
-                    if (autoReconnect) {
-                        opcuaClient.connect(); // 연결 시도 (동기 방식이므로 완료될 때까지 대기)
+                    long now = System.currentTimeMillis();
+
+                    // 최초 연결 끊김 시점 기록
+                    if (firstDisconnectTime == 0L) {
+                        firstDisconnectTime = now;
                     }
-                    // 연결 실패 시 다음 주기로 넘어감 (재연결 로직 보완 필요 시 여기에 추가)
+
+                    long timeSinceDisconnect = now - firstDisconnectTime;
+
+                    long retryInterval;
+                    if (timeSinceDisconnect < TimeUnit.MINUTES.toMillis(15)) {
+                        retryInterval = 5; // 5ms
+                    } else if (timeSinceDisconnect < TimeUnit.MINUTES.toMillis(30)) {
+                        retryInterval = TimeUnit.MINUTES.toMillis(5); // 5분
+                    } else {
+                        retryInterval = TimeUnit.MINUTES.toMillis(10); // 10분
+                    }
+
+                    // 마지막 재시도 이후 지정한 간격이 지났으면 재시도
+                    if (now - lastReconnectAttempt >= retryInterval) {
+                        lastReconnectAttempt = now;
+
+                        log.warn("OPC UA 서버 재연결 시도 (재시도 간격: {}ms)", retryInterval);
+                        if (autoReconnect) {
+                            opcuaClient.connect();
+                        }
+                    }
+
+                    // 연결에 실패했으면 다음 주기로 넘어감
                     if (!opcuaClient.isConnected()) {
                         log.warn("OPC UA 서버 재연결 실패. 다음 주기에 다시 시도합니다.");
-                        return; // 현재 주기 작업 중단
+                        return;
                     }
+
+                    // 재연결 성공 시 시간 초기화
+                    firstDisconnectTime = 0L;
+                    lastReconnectAttempt = 0L;
                 }
 
                 // 2. 데이터 읽기
