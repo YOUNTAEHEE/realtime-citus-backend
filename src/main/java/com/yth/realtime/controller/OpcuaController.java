@@ -3,9 +3,6 @@ package com.yth.realtime.controller;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -135,49 +132,52 @@ public class OpcuaController {
     }
 
     // @PostMapping("/historical/export")
-    // public ResponseEntity<?> exportHistoricalData(@RequestBody HistoricalDataRequest request) {
-    //     log.info("===== 과거 데이터 내보내기 요청 수신: {} =====", request);
-    //     try {
-    //         // OpcuaHistoricalService의 CSV 내보내기 메서드 호출
-    //         String csvData = opcuaHistoricalService.exportHistoricalDataToCsv(
-    //                 request.getStartTime(),
-    //                 request.getEndTime(),
-    //                 request.getDeviceGroup());
+    // public ResponseEntity<?> exportHistoricalData(@RequestBody
+    // HistoricalDataRequest request) {
+    // log.info("===== 과거 데이터 내보내기 요청 수신: {} =====", request);
+    // try {
+    // // OpcuaHistoricalService의 CSV 내보내기 메서드 호출
+    // String csvData = opcuaHistoricalService.exportHistoricalDataToCsv(
+    // request.getStartTime(),
+    // request.getEndTime(),
+    // request.getDeviceGroup());
 
-    //         if (csvData == null || csvData.isEmpty()) {
-    //             log.warn("내보낼 데이터가 없습니다. 요청: {}", request);
-    //             // 데이터 없음 응답 (예: 204 No Content 또는 메시지와 함께 200 OK)
-    //             Map<String, Object> responseBody = new HashMap<>();
-    //             responseBody.put("success", true);
-    //             responseBody.put("message", "지정된 기간에 내보낼 데이터가 없습니다.");
-    //             return ResponseEntity.ok(responseBody); // 또는 ResponseEntity.noContent().build();
-    //         }
+    // if (csvData == null || csvData.isEmpty()) {
+    // log.warn("내보낼 데이터가 없습니다. 요청: {}", request);
+    // // 데이터 없음 응답 (예: 204 No Content 또는 메시지와 함께 200 OK)
+    // Map<String, Object> responseBody = new HashMap<>();
+    // responseBody.put("success", true);
+    // responseBody.put("message", "지정된 기간에 내보낼 데이터가 없습니다.");
+    // return ResponseEntity.ok(responseBody); // 또는
+    // ResponseEntity.noContent().build();
+    // }
 
-    //         // HTTP 헤더 설정
-    //         HttpHeaders headers = new HttpHeaders();
-    //         headers.setContentType(MediaType.parseMediaType("text/csv; charset=utf-8")); // Content-Type 설정 (UTF-8 명시)
-    //         // 파일 이름 설정 (예: export_data_그룹명_시작시간.csv) - 필요에 따라 수정
-    //         String filename = String.format("export_data_%s_%s.csv",
-    //                 request.getDeviceGroup(),
-    //                 request.getStartTime().replaceAll("[:.]", "-")); // 파일명에 부적합한 문자 제거
-    //         headers.setContentDispositionFormData("attachment", filename); // 다운로드 파일명 지정
+    // // HTTP 헤더 설정
+    // HttpHeaders headers = new HttpHeaders();
+    // headers.setContentType(MediaType.parseMediaType("text/csv; charset=utf-8"));
+    // // Content-Type 설정 (UTF-8 명시)
+    // // 파일 이름 설정 (예: export_data_그룹명_시작시간.csv) - 필요에 따라 수정
+    // String filename = String.format("export_data_%s_%s.csv",
+    // request.getDeviceGroup(),
+    // request.getStartTime().replaceAll("[:.]", "-")); // 파일명에 부적합한 문자 제거
+    // headers.setContentDispositionFormData("attachment", filename); // 다운로드 파일명 지정
 
-    //         // CSV 데이터와 헤더를 포함한 ResponseEntity 반환
-    //         return new ResponseEntity<>(csvData, headers, HttpStatus.OK);
+    // // CSV 데이터와 헤더를 포함한 ResponseEntity 반환
+    // return new ResponseEntity<>(csvData, headers, HttpStatus.OK);
 
-    //     } catch (IllegalArgumentException iae) {
-    //         log.warn("과거 데이터 내보내기 요청 처리 중 잘못된 파라미터: {}", iae.getMessage());
-    //         Map<String, Object> responseBody = new HashMap<>();
-    //         responseBody.put("success", false);
-    //         responseBody.put("message", "잘못된 요청 파라미터: " + iae.getMessage());
-    //         return ResponseEntity.badRequest().body(responseBody);
-    //     } catch (Exception e) {
-    //         log.error("과거 데이터 내보내기 중 오류 발생: {}", e.getMessage(), e);
-    //         // 오류 응답 (JSON 형태)
-    //         Map<String, Object> responseBody = new HashMap<>();
-    //         responseBody.put("success", false);
-    //         responseBody.put("message", "데이터 내보내기 중 서버 오류가 발생했습니다: " + e.getMessage());
-    //         return ResponseEntity.internalServerError().body(responseBody);
-    //     }
+    // } catch (IllegalArgumentException iae) {
+    // log.warn("과거 데이터 내보내기 요청 처리 중 잘못된 파라미터: {}", iae.getMessage());
+    // Map<String, Object> responseBody = new HashMap<>();
+    // responseBody.put("success", false);
+    // responseBody.put("message", "잘못된 요청 파라미터: " + iae.getMessage());
+    // return ResponseEntity.badRequest().body(responseBody);
+    // } catch (Exception e) {
+    // log.error("과거 데이터 내보내기 중 오류 발생: {}", e.getMessage(), e);
+    // // 오류 응답 (JSON 형태)
+    // Map<String, Object> responseBody = new HashMap<>();
+    // responseBody.put("success", false);
+    // responseBody.put("message", "데이터 내보내기 중 서버 오류가 발생했습니다: " + e.getMessage());
+    // return ResponseEntity.internalServerError().body(responseBody);
+    // }
     // }
 }

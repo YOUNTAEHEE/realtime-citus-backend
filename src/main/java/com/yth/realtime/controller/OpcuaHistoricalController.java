@@ -128,3 +128,204 @@
 //         }
 //     }
 // }
+
+// package com.yth.realtime.controller; // 적절한 패키지 경로로 수정하세요
+
+// import java.io.IOException;
+// import java.io.PrintWriter;
+// import java.util.ArrayList;
+// import java.util.LinkedHashSet;
+// import java.util.List;
+// import java.util.Map;
+// import java.util.Set;
+
+// import org.springframework.web.bind.annotation.GetMapping;
+// import org.springframework.web.bind.annotation.PostMapping;
+// import org.springframework.web.bind.annotation.RequestBody;
+// import org.springframework.web.bind.annotation.RequestMapping;
+// import org.springframework.web.bind.annotation.RestController;
+
+// import com.yth.realtime.dto.HistoricalDataRequest;
+// import com.yth.realtime.dto.HistoricalDataResponse;
+// import com.yth.realtime.service.OpcuaHistoricalService;
+
+// import jakarta.servlet.http.HttpServletResponse;
+// import lombok.RequiredArgsConstructor;
+// import lombok.extern.slf4j.Slf4j;
+
+// @Slf4j
+// @RestController
+// @RequestMapping("/api/opcua/historical") // 기본 경로 설정
+// @RequiredArgsConstructor
+// public class OpcuaHistoricalController {
+//     private final OpcuaHistoricalService opcuaHistoricalService;
+
+//     @PostMapping("/export")
+//     public void exportHistoricalDataToCsv(
+//             @RequestBody HistoricalDataRequest request,
+//             HttpServletResponse response) {
+//         log.info("CSV 내보내기 요청: startTime={}, endTime={}, deviceGroup={}", 
+//                 request.getStartTime(), request.getEndTime(), request.getDeviceGroup());
+        
+//         try {
+//             HistoricalDataResponse result = opcuaHistoricalService.getHistoricalData(
+//                     request.getStartTime(),
+//                     request.getEndTime(),
+//                     request.getDeviceGroup());
+    
+//             if (!result.isSuccess() || result.getTimeSeriesData() == null) {
+//                 response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+//                 response.getWriter().write("데이터 조회 실패: " + (result.getMessage() != null ? result.getMessage() : "알 수 없는 오류"));
+//                 return;
+//             }
+    
+//             // 파일명 생성 (날짜 포함)
+//             String safeStartTime = request.getStartTime().replaceAll("[:\\-]", "").replace("T", "_").replace("Z", "");
+//             String fileName = String.format("opcua_export_%s_%s.csv", request.getDeviceGroup(), safeStartTime);
+            
+//             response.setContentType("text/csv; charset=UTF-8");
+//             response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
+            
+//             // UTF-8 BOM 추가하여 Excel 호환성 향상
+//             response.getOutputStream().write(0xEF);
+//             response.getOutputStream().write(0xBB);
+//             response.getOutputStream().write(0xBF);
+    
+//             try (PrintWriter writer = new PrintWriter(response.getOutputStream())) {
+//                 List<Map<String, Object>> data = result.getTimeSeriesData();
+    
+//                 if (data.isEmpty()) {
+//                     writer.println("데이터가 없습니다");
+//                     return;
+//                 }
+    
+//                 // CSV 헤더 추출
+//                 Set<String> headers = new LinkedHashSet<>(data.get(0).keySet());
+//                 writer.println(String.join(",", headers));
+    
+//                 // CSV 내용 출력
+//                 for (Map<String, Object> row : data) {
+//                     List<String> values = new ArrayList<>();
+//                     for (String header : headers) {
+//                         Object value = row.get(header);
+//                         values.add(value != null ? value.toString() : "");
+//                     }
+//                     writer.println(String.join(",", values));
+//                 }
+//             }
+//         } catch (Exception e) {
+//             log.error("CSV 내보내기 오류: ", e);
+//             try {
+//                 response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+//                 response.getWriter().write("CSV 생성 중 오류 발생: " + e.getMessage());
+//             } catch (IOException ex) {
+//                 log.error("응답 에러 메시지 작성 중 오류: ", ex);
+//             }
+//         }
+//     }
+// }
+
+package com.yth.realtime.controller;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.yth.realtime.dto.HistoricalDataRequest;
+import com.yth.realtime.dto.HistoricalDataResponse;
+import com.yth.realtime.service.OpcuaHistoricalService;
+
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@RestController
+@RequestMapping("/api/opcua/historical")
+@RequiredArgsConstructor
+public class OpcuaHistoricalController {
+    private final OpcuaHistoricalService opcuaHistoricalService;
+
+    // @PostMapping
+    // public HistoricalDataResponse getHistoricalData(@RequestBody HistoricalDataRequest request) {
+    //     log.info("과거 데이터 요청: startTime={}, endTime={}, deviceGroup={}", 
+    //             request.getStartTime(), request.getEndTime(), request.getDeviceGroup());
+    //     return opcuaHistoricalService.getHistoricalData(
+    //             request.getStartTime(),
+    //             request.getEndTime(),
+    //             request.getDeviceGroup());
+    // }
+
+    // @PostMapping("/export")
+    // public void exportHistoricalDataToCsv(
+    //         @RequestBody HistoricalDataRequest request,
+    //         HttpServletResponse response) {
+    //     log.info("CSV 내보내기 요청: startTime={}, endTime={}, deviceGroup={}", 
+    //             request.getStartTime(), request.getEndTime(), request.getDeviceGroup());
+        
+    //     try {
+    //         HistoricalDataResponse result = opcuaHistoricalService.getHistoricalData(
+    //                 request.getStartTime(),
+    //                 request.getEndTime(),
+    //                 request.getDeviceGroup());
+    
+    //         if (!result.isSuccess() || result.getTimeSeriesData() == null) {
+    //             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+    //             response.getWriter().write("데이터 조회 실패: " + (result.getMessage() != null ? result.getMessage() : "알 수 없는 오류"));
+    //             return;
+    //         }
+    
+    //         // 파일명 생성
+    //         String safeStartTime = request.getStartTime().replaceAll("[:\\-]", "").replace("T", "_").replace("Z", "");
+    //         String fileName = String.format("opcua_export_%s_%s.csv", request.getDeviceGroup(), safeStartTime);
+            
+    //         response.setContentType("text/csv; charset=UTF-8");
+    //         response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
+            
+    //         // UTF-8 BOM 추가
+    //         response.getOutputStream().write(0xEF);
+    //         response.getOutputStream().write(0xBB);
+    //         response.getOutputStream().write(0xBF);
+    
+    //         try (PrintWriter writer = new PrintWriter(response.getOutputStream())) {
+    //             List<Map<String, Object>> data = result.getTimeSeriesData();
+    
+    //             if (data.isEmpty()) {
+    //                 writer.println("데이터가 없습니다");
+    //                 return;
+    //             }
+    
+    //             // CSV 헤더 추출
+    //             Set<String> headers = new LinkedHashSet<>(data.get(0).keySet());
+    //             writer.println(String.join(",", headers));
+    
+    //             // CSV 내용 출력
+    //             for (Map<String, Object> row : data) {
+    //                 List<String> values = new ArrayList<>();
+    //                 for (String header : headers) {
+    //                     Object value = row.get(header);
+    //                     values.add(value != null ? value.toString() : "");
+    //                 }
+    //                 writer.println(String.join(",", values));
+    //             }
+    //         }
+    //     } catch (Exception e) {
+    //         log.error("CSV 내보내기 오류: ", e);
+    //         try {
+    //             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+    //             response.getWriter().write("CSV 생성 중 오류 발생: " + e.getMessage());
+    //         } catch (IOException ex) {
+    //             log.error("응답 에러 메시지 작성 중 오류: ", ex);
+    //         }
+    //     }
+    // }
+}
