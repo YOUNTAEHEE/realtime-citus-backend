@@ -299,7 +299,8 @@ public class OpcuaClient {
     private final AtomicLong clientHandleCounter = new AtomicLong(1);
     // OPC UA 서버 주소 및 노드 ID 설정
     // private static final String SERVER_URL = "opc.tcp://192.168.0.200:4840";
-    private static final String SERVER_URL = "opc.tcp://192.168.0.110:4840";
+    // private static final String SERVER_URL = "opc.tcp://192.168.0.110:4840";
+    private static final String SERVER_URL = "opc.tcp://192.168.10.98:4840";
 
     // private static final String SERVER_URL = "opc.tcp://192.168.0.20:4840";
     // private static final String SERVER_URL = "opc.tcp://192.168.10.12:4840";
@@ -312,9 +313,9 @@ public class OpcuaClient {
             // "OPC_UA", "ns=4;s=|var|CODESYS Control Win V3 x64.Application.PLC_PRG",
             // "PLC_PRG", "ns=4;s=|var|CODESYS Control Win V3 x64.FRC1.PLC_PRG",
             // "GVL", "ns=4;s=|var|CODESYS Control Win V3 x64.FRC1.GVL",
-            // "HIS", "ns=4;s=|var|CODESYS Control Win V3 x64.Application.His10ms"
+            "HIS", "ns=4;s=|var|CODESYS Control Win V3 x64.Application.His10ms"//이거
             // ,
-            "HIS", "ns=4;s=|var|CODESYS Control Win V3 x64.FRC1.Historian.fHistorian"
+            // "HIS", "ns=4;s=|var|CODESYS Control Win V3 x64.FRC1.Historian.fHistorian"
             // ,
             // "HIS", "ns=4;s=|var|CODESYS Control Win V3 x64.FRC1.Historian_10ms.frc_historian"
             );

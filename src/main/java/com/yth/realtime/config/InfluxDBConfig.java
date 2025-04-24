@@ -55,7 +55,7 @@ public class InfluxDBConfig {
 
             // influxDBClient = InfluxDBClientFactory.create(url, token.toCharArray());
 
-            long readTimeoutSeconds = 30;
+            long readTimeoutSeconds = 60;
 
             // 1. OkHttpClient.Builder 생성 및 타임아웃 설정
             OkHttpClient.Builder okHttpBuilder = new OkHttpClient.Builder()

@@ -36,7 +36,7 @@ spring:
         await-termination-period: 60s
 
 server:
-  port: 8080
+  port: 8081
 
 weather:
   api:
