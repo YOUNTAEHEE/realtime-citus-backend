@@ -63,6 +63,8 @@ implementation 'org.eclipse.milo:stack-client:0.6.8'
 
 implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
 
+
+implementation 'com.google.guava:guava:33.0.0-jre'
 }
 
 tasks.named('test') {
