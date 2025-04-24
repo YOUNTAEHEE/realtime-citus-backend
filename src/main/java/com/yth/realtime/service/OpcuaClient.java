@@ -298,9 +298,10 @@ public class OpcuaClient {
     private final Map<String, Map<String, NodeId>> groupedNodes = new HashMap<>();
     private final AtomicLong clientHandleCounter = new AtomicLong(1);
     // OPC UA 서버 주소 및 노드 ID 설정
-    // private static final String SERVER_URL = "opc.tcp://192.168.0.200:4840";
+    // private static final String SERVER_URL = "opc.tcp://192.168.10.98:4840";//이거
+
+    private static final String SERVER_URL = "opc.tcp://192.168.0.200:4840";
     // private static final String SERVER_URL = "opc.tcp://192.168.0.110:4840";
-    private static final String SERVER_URL = "opc.tcp://192.168.10.98:4840";
 
     // private static final String SERVER_URL = "opc.tcp://192.168.0.20:4840";
     // private static final String SERVER_URL = "opc.tcp://192.168.10.12:4840";
