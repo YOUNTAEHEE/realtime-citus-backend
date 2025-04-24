@@ -1,15 +1,23 @@
 package com.yth.realtime.controller;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import com.yth.realtime.dto.HistoricalDataRequest;
 import com.yth.realtime.dto.HistoricalDataResponse;
@@ -180,4 +188,113 @@ public class OpcuaController {
     // return ResponseEntity.internalServerError().body(responseBody);
     // }
     // }
+
+    // @GetMapping("/historical/export")
+    // public ResponseEntity<Resource> exportHistoricalData(
+    // @RequestParam String startTime,
+    // @RequestParam String endTime,
+    // @RequestParam String deviceGroup) {
+
+    // log.info("Received request to export PIVOTED CSV: startTime={}, endTime={},
+    // deviceGroup={}", startTime, endTime,
+    // deviceGroup);
+    // Path csvFilePath = null;
+    // try {
+    // // 서비스 호출하여 CSV 파일 생성 및 경로 얻기
+    // csvFilePath = opcuaHistoricalService.exportPivotedDataToCsvFile(startTime,
+    // endTime, deviceGroup);
+
+    // // 파일 리소스 생성
+    // Resource resource = new FileSystemResource(csvFilePath);
+
+    // // 파일 존재 및 읽기 가능 여부 확인 강화
+    // if (!resource.exists() || !resource.isReadable()) {
+    // // --- log.error 수정: format: 제거 ---
+    // log.error("생성된 CSV 파일을 찾거나 읽을 수 없습니다: {}", csvFilePath);
+    // // ---------------------------------
+    // throw new RuntimeException("생성된 CSV 파일을 찾거나 읽을 수 없습니다: " + csvFilePath);
+    // }
+
+    // // --- 파일 크기를 먼저 가져오기 (IOException 가능성 있음) ---
+    // // 이 메서드는 IOException을 던질 수 있으며, 아래 catch 블록에서 처리됩니다.
+    // long contentLength = resource.contentLength();
+
+    // // 다운로드될 파일명 생성
+    // String currentDateTime =
+    // LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmmss"));
+    // String filename = String.format("historical_pivoted_data_%s_%s.csv",
+    // deviceGroup, currentDateTime);
+
+    // // HTTP 헤더 설정
+    // HttpHeaders headers = new HttpHeaders();
+    // headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" +
+    // filename + "\"");
+    // headers.add(HttpHeaders.CACHE_CONTROL, "no-cache, no-store,
+    // must-revalidate");
+    // headers.add(HttpHeaders.PRAGMA, "no-cache");
+    // headers.add(HttpHeaders.EXPIRES, "0");
+
+    // // 파일 스트리밍 응답 반환
+    // return ResponseEntity.ok()
+    // .headers(headers)
+    // // .contentLength(contentLength) // 계산된 파일 크기 사용
+    // .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8")) // UTF-8 명시
+    // .body(resource);
+
+    // } catch (IllegalArgumentException | IOException e) { // IOException 포함
+    // (contentLength 등에서 발생 가능)
+    // log.error("CSV 내보내기(피벗) 처리 중 오류 발생: {}", e.getMessage(), e);
+    // // 오류 발생 시 빈 응답 반환 고려
+    // return ResponseEntity.internalServerError().build();
+    // } finally {
+    // // 임시 파일 삭제 로직 (동일)
+    // if (csvFilePath != null) {
+    // try {
+    // Files.deleteIfExists(csvFilePath);
+    // log.info("임시 CSV 파일 삭제 완료: {}", csvFilePath);
+    // } catch (IOException e) {
+    // // 파일 삭제 실패는 로깅만 함
+    // log.error("임시 CSV 파일 삭제 중 오류: {}", csvFilePath, e);
+    // }
+    // }
+    // }
+    // }
+
+    @GetMapping("/historical/export")
+    public ResponseEntity<StreamingResponseBody> exportHistoricalData(
+            @RequestParam String startTime,
+            @RequestParam String endTime,
+            @RequestParam String deviceGroup) {
+
+        log.info("Streaming CSV export: {}, {}", startTime, endTime);
+        Path csvFilePath;
+
+        try {
+            csvFilePath = opcuaHistoricalService.exportPivotedDataToCsvFile(startTime, endTime, deviceGroup);
+
+            String filename = URLEncoder.encode(
+                    "historical_data_" + deviceGroup + ".csv", StandardCharsets.UTF_8).replace("+", "%20");
+
+            StreamingResponseBody stream = outputStream -> {
+                try (var inputStream = Files.newInputStream(csvFilePath)) {
+                    inputStream.transferTo(outputStream);
+                    outputStream.flush();
+                } finally {
+                    // ✅ 스트리밍 후 삭제
+                    Files.deleteIfExists(csvFilePath);
+                    log.info("CSV 파일 삭제 완료: {}", csvFilePath);
+                }
+            };
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + filename)
+                    .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
+                    .body(stream);
+
+        } catch (Exception e) {
+            log.error("CSV 스트리밍 중 오류 발생", e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
 }
